@@ -468,7 +468,7 @@ def render_page_one(df: pd.DataFrame, model_bundle: Dict[str, Any], grad_bundle:
                     ],
                 },
             ))
-            st.plotly_chart(gauge_stress, use_container_width=True)
+            st.plotly_chart(gauge_stress, width='stretch')
         with g2:
             gauge_health = go.Figure(go.Indicator(
                 mode="gauge+number",
@@ -484,7 +484,7 @@ def render_page_one(df: pd.DataFrame, model_bundle: Dict[str, Any], grad_bundle:
                     ],
                 },
             ))
-            st.plotly_chart(gauge_health, use_container_width=True)
+            st.plotly_chart(gauge_health, width='stretch')
 
         # Model Performance Metrics
         st.markdown("#### Model Performance & Reliability")
@@ -654,7 +654,7 @@ def render_page_two(supabase: Optional[Client]) -> None:
     chart_df = logs.set_index("log_date")
     selected_cols = [c for c in ["predicted_mental_health_pct", "predicted_stress_level", "mood_score", "sleep_hours"] if c in chart_df.columns]
     if selected_cols:
-        st.line_chart(chart_df[selected_cols], use_container_width=True)
+        st.line_chart(chart_df[selected_cols], width='stretch')
     
     # Seasonal stress analysis
     st.markdown("#### Seasonal & Temporal Trends")
@@ -697,7 +697,7 @@ def render_page_two(supabase: Optional[Client]) -> None:
                 showlegend=False
             ))
             forecast_plot.update_layout(height=300, title="Predicted Stress Trend (4 weeks)")
-            st.plotly_chart(forecast_plot, use_container_width=True)
+            st.plotly_chart(forecast_plot, width='stretch')
 
 
 def render_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, title: str) -> None:
@@ -727,7 +727,7 @@ def render_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, title: str) 
         yaxis_title="Actual Stress Level",
         height=400,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_page_three(model_bundle: Dict[str, Any], grad_bundle: Dict[str, Any], 
@@ -809,7 +809,7 @@ def render_page_three(model_bundle: Dict[str, Any], grad_bundle: Dict[str, Any],
     }
     
     metrics_df = pd.DataFrame(metrics_data)
-    st.dataframe(metrics_df, use_container_width=True, hide_index=True)
+    st.dataframe(metrics_df, width='stretch', hide_index=True)
     
     # Classification Models Details
     st.markdown("## 🔍 Classification Models Deep Dive")
@@ -1035,7 +1035,7 @@ def render_page_three(model_bundle: Dict[str, Any], grad_bundle: Dict[str, Any],
     }
     
     comparison_df = pd.DataFrame(comparison_data)
-    st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+    st.dataframe(comparison_df, width='stretch', hide_index=True)
     
     st.markdown("""
     **Recommendation:**

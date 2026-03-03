@@ -16,6 +16,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.metrics import silhouette_score, davies_bouldin_score
 
 
 def train_kmeans_from_csv(csv_path: str, n_clusters: int = 3) -> Dict[str, Any]:
@@ -45,6 +46,9 @@ def train_kmeans_from_csv(csv_path: str, n_clusters: int = 3) -> Dict[str, Any]:
             - 'model': Trained KMeans instance
             - 'labels': Cluster assignment array for training data samples
             - 'feature_cols': List of feature column names used
+            - 'silhouette_score': Silhouette score measuring cluster quality (-1 to 1, higher is better)
+            - 'davies_bouldin_index': Davies-Bouldin index measuring cluster separation (lower is better)
+            - 'inertia': Sum of squared distances of samples to their closest cluster center
     
     Raises:
         FileNotFoundError: If CSV file not found
@@ -72,4 +76,17 @@ def train_kmeans_from_csv(csv_path: str, n_clusters: int = 3) -> Dict[str, Any]:
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     kmeans.fit(x_proc)
     labels = kmeans.labels_
-    return {"model": kmeans, "labels": labels, "feature_cols": model_features}
+    
+    # Calculate clustering metrics
+    sil_score = silhouette_score(x_proc, labels)
+    db_index = davies_bouldin_score(x_proc, labels)
+    inertia = kmeans.inertia_
+    
+    return {
+        "model": kmeans,
+        "labels": labels,
+        "feature_cols": model_features,
+        "silhouette_score": sil_score,
+        "davies_bouldin_index": db_index,
+        "inertia": inertia
+    }
