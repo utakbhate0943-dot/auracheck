@@ -84,9 +84,3 @@ streamlit run app.py
 	- Profile management
 	- Daily check-in
 	- Trend dashboard for stress, health %, mood, and sleep
-
-## Notes
-
-- If OpenAI quota is unavailable, the app returns safe fallback recommendations.
-- For internal developer setup and deployment checklist, see `INTERNAL_SETUP.md`.
-- For architecture/tech-stack presentation and roadmap, see `PRESENTATION.md`.
