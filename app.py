@@ -16,10 +16,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from openai import OpenAI
+from supabase import create_client
 
 load_dotenv()
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "utakbhate0943@sdsu.com").strip().lower()
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
+SUPABASE_KEY = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or "").strip()
 
 st.set_page_config(page_title="AuraCheck", page_icon="💜", layout="wide")
 
@@ -700,6 +703,55 @@ def get_db_connection() -> sqlite3.Connection:
     return connection
 
 
+def is_supabase_enabled() -> bool:
+    """Return True when Supabase env variables are configured."""
+    return bool(SUPABASE_URL and SUPABASE_KEY)
+
+
+@st.cache_resource
+def get_supabase_client():
+    """Create and cache Supabase client."""
+    if not is_supabase_enabled():
+        return None
+    try:
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception:
+        return None
+
+
+def sync_user_to_supabase(user_payload: dict) -> None:
+    """Mirror user record to Supabase when configured."""
+    client = get_supabase_client()
+    if client is None:
+        return
+    try:
+        client.table("users").upsert(user_payload, on_conflict="user_id").execute()
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"users sync failed: {exc}"
+
+
+def sync_profile_to_supabase(profile_payload: dict) -> None:
+    """Mirror profile record to Supabase when configured."""
+    client = get_supabase_client()
+    if client is None:
+        return
+    try:
+        client.table("profile").upsert(profile_payload, on_conflict="user_id").execute()
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"profile sync failed: {exc}"
+
+
+def sync_daily_input_to_supabase(daily_payload: dict) -> None:
+    """Mirror daily input record to Supabase when configured."""
+    client = get_supabase_client()
+    if client is None:
+        return
+    try:
+        client.table("daily_inputs").upsert(daily_payload, on_conflict="user_id,input_date").execute()
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"daily_inputs sync failed: {exc}"
+
+
 def init_database() -> None:
     """Create required tables if they do not exist."""
     with get_db_connection() as connection:
@@ -824,6 +876,21 @@ def create_user(
                 ),
             )
             connection.commit()
+
+        sync_user_to_supabase(
+            {
+                "user_id": user_id,
+                "first_name": first_name.strip(),
+                "last_name": last_name.strip(),
+                "email": normalized_email,
+                "phone_number": phone_number.strip() or None,
+                "city": city.strip() or None,
+                "zip_code": zip_code.strip() or None,
+                "password_hash": password_hash,
+                "password_salt": password_salt,
+                "is_verified": False,
+            }
+        )
         return True, user_id
     except sqlite3.IntegrityError:
         return False, "A user with this email already exists."
@@ -883,6 +950,15 @@ def upsert_profile(user_id: str, age: Optional[int], lifestyle_parameters: str, 
                 ),
             )
             connection.commit()
+
+        sync_profile_to_supabase(
+            {
+                "user_id": user_id,
+                "age": age,
+                "lifestyle_parameters": {"text": lifestyle_parameters.strip()} if lifestyle_parameters.strip() else {},
+                "personal_details": {"text": personal_details.strip()} if personal_details.strip() else {},
+            }
+        )
         return True
     except Exception:
         return False
@@ -911,6 +987,17 @@ def save_user_daily_input_to_sql(user_id: str, answers: dict, prediction: dict, 
                 ),
             )
             connection.commit()
+
+        sync_daily_input_to_supabase(
+            {
+                "user_id": user_id,
+                "input_date": today_value,
+                "submitted_at": submitted_at,
+                "answers_json": answers,
+                "prediction_json": prediction,
+                "cluster": cluster,
+            }
+        )
         return True, ""
     except sqlite3.IntegrityError:
         return False, "You have already submitted today's input. Please come back tomorrow."
@@ -1257,6 +1344,7 @@ def initialize_state() -> None:
         "current_user_id": None,
         "current_user_email": None,
         "current_user_name": None,
+        "last_supabase_sync_error": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -1862,6 +1950,8 @@ def main():
                 st.rerun()
             st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
             st.markdown("<div class='auth-subtext'>Daily SQL history enabled</div>", unsafe_allow_html=True)
+            if st.session_state.get("last_supabase_sync_error"):
+                st.caption(f"Supabase sync note: {st.session_state.get('last_supabase_sync_error')}")
         else:
         
             st.markdown("<div class='auth-header'>Join AuraCheck</div>", unsafe_allow_html=True)
