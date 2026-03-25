@@ -1,0 +1,9 @@
+MODEL ASSUMPTION CHECKS
+================================================================================
+Model type: Balanced Multinomial Logistic Regression
+
+                     Check                                       Result Status
+        Solver convergence                  n_iter_max=2, max_iter=5000   PASS
+   Multicollinearity (VIF)              max VIF=1.003 (threshold <= 10)   PASS
+All target classes present  counts={0: 3028, 1: 2760, 2: 2330, 3: 1882}   PASS
+      Probability validity All probabilities in [0,1] and rows sum to 1   PASS

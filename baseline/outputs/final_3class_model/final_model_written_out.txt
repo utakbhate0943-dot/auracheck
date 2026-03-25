@@ -1,0 +1,26 @@
+MODEL WRITTEN OUT
+================================================================================
+Model: Balanced Multinomial Logistic Regression (Pruned 14)
+
+Form:
+eta_k = b_k + sum_j(w_{k,j} * z_j)
+z_j = (x_j - mean_j) / scale_j
+P(class=k) = exp(eta_k) / sum_c exp(eta_c)
+
+Standardization parameters:
+- Course: mean=2.743750, scale=1.517510
+- Gender: mean=0.507750, scale=0.499940
+- Sleep_Quality: mean=1.416125, scale=0.663487
+- Physical_Activity: mean=0.906000, scale=0.700296
+- Diet_Quality: mean=0.996875, scale=0.630567
+- Social_Support: mean=0.882500, scale=0.705474
+- Relationship_Status: mean=1.212875, scale=0.871240
+- Substance_Use: mean=0.376375, scale=0.884713
+- Counseling_Service_Use: mean=0.485375, scale=0.661843
+- Family_History: mean=0.306375, scale=0.460987
+- Chronic_Illness: mean=0.051750, scale=0.221522
+- Financial_Stress: mean=2.450000, scale=1.709093
+- Extracurricular_Involvement: mean=1.106375, scale=0.704670
+- Residence_Type: mean=0.806625, scale=0.750654
+
+Class-specific equations removed from this report by request.

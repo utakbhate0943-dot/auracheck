@@ -1,0 +1,28 @@
+{
+  "input": {
+    "Course": "Engineering",
+    "Gender": "Female",
+    "Sleep_Quality": "Average",
+    "Physical_Activity": "Low",
+    "Diet_Quality": "Average",
+    "Social_Support": "Low",
+    "Relationship_Status": "Single",
+    "Substance_Use": "Occasionally",
+    "Counseling_Service_Use": "Never",
+    "Family_History": "Yes",
+    "Chronic_Illness": "No",
+    "Financial_Stress": 8,
+    "Extracurricular_Involvement": "Low",
+    "Residence_Type": "On-Campus"
+  },
+  "prediction": {
+    "predicted_class_index": 1,
+    "predicted_class": "Low (Q2)",
+    "probabilities": {
+      "Very Low (Q1)": 0.25215909196235603,
+      "Low (Q2)": 0.2846858662130879,
+      "Moderate (Q3)": 0.24095212366208807,
+      "High (Q4)": 0.22220291816246796
+    }
+  }
+}
