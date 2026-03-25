@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from supabase import create_client
 
-load_dotenv()
+load_dotenv(override=True)
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "utakbhate0943@sdsu.com").strip().lower()
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
