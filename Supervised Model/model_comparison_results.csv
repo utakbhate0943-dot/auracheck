@@ -1,0 +1,7 @@
+Target,Model,Train_Accuracy,Test_Accuracy,Train_F1_macro,Test_F1_macro,Best_Params
+Anxiety_Score,RandomForest_balanced,0.9393692777212614,0.20408163265306123,0.936588497368224,0.20131567860280827,"{'clf__max_depth': 12, 'clf__min_samples_leaf': 4, 'clf__n_estimators': 500}"
+Anxiety_Score,LogReg_balanced,0.19511698880976602,0.16041765543426673,0.19363794167052326,0.15736687079024222,{'clf__C': 3.0}
+Depression_Score,RandomForest_balanced,0.9833163784333673,0.21737066919791173,0.9822110799485458,0.21396724901777542,"{'clf__max_depth': 12, 'clf__min_samples_leaf': 2, 'clf__n_estimators': 500}"
+Depression_Score,LogReg_balanced,0.21139369277721262,0.1893687707641196,0.20309827929935445,0.18317992059170543,{'clf__C': 0.3}
+Stress_Level,RandomForest_balanced,0.9820956256358088,0.1969625059326056,0.9813615673462226,0.1974360627229984,"{'clf__max_depth': 12, 'clf__min_samples_leaf': 1, 'clf__n_estimators': 500}"
+Stress_Level,LogReg_balanced,0.21831129196337742,0.19269102990033224,0.2119305080505928,0.18672022901820684,{'clf__C': 1.0}
