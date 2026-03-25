@@ -6,4 +6,5 @@ app_old.py
 __pycache__/
 *.pyc
 Dataset/user_responses.json
-SUPABASE_SETUP_GUIDE.md
+Database/SUPABASE_SETUP_GUIDE.md
+.env
