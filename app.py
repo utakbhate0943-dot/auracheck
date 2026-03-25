@@ -1,5 +1,10 @@
 import os
 import json
+import sqlite3
+import uuid
+import secrets
+import hashlib
+import hmac
 from datetime import date, datetime
 from typing import Dict, Any, Optional
 import pickle
@@ -684,6 +689,422 @@ def get_field_options(field_name: str) -> list:
     return options.get(field_name, [])
 
 
+def get_db_connection() -> sqlite3.Connection:
+    """Get SQLite connection for AuraCheck app data."""
+    db_path = "Database/auracheck.db"
+    os.makedirs("Database", exist_ok=True)
+    connection = sqlite3.connect(db_path)
+    connection.execute("PRAGMA foreign_keys = ON;")
+    return connection
+
+
+def init_database() -> None:
+    """Create required tables if they do not exist."""
+    with get_db_connection() as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                user_id TEXT PRIMARY KEY,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                phone_number TEXT,
+                city TEXT,
+                zip_code TEXT,
+                password_hash TEXT NOT NULL,
+                password_salt TEXT NOT NULL,
+                is_verified INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS profile (
+                profile_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL UNIQUE,
+                age INTEGER,
+                lifestyle_parameters TEXT,
+                personal_details TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+            );
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS daily_inputs (
+                entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                input_date TEXT NOT NULL,
+                submitted_at TEXT NOT NULL,
+                answers_json TEXT NOT NULL,
+                prediction_json TEXT NOT NULL,
+                cluster INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                UNIQUE(user_id, input_date)
+            );
+            """
+        )
+        connection.commit()
+
+
+def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
+    """Hash password with PBKDF2-HMAC-SHA256 and a per-user salt."""
+    salt_value = salt or secrets.token_hex(16)
+    hashed = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt_value.encode("utf-8"),
+        200000,
+    )
+    return hashed.hex(), salt_value
+
+
+def verify_password(password: str, expected_hash: str, salt: str) -> bool:
+    """Verify password against stored hash and salt."""
+    calculated_hash, _ = hash_password(password, salt)
+    return hmac.compare_digest(calculated_hash, expected_hash)
+
+
+def create_user(
+    first_name: str,
+    last_name: str,
+    email: str,
+    password: str,
+    phone_number: str = "",
+    city: str = "",
+    zip_code: str = "",
+) -> tuple[bool, str]:
+    """Create a user account in SQL database."""
+    normalized_email = email.strip().lower()
+    password_hash, password_salt = hash_password(password)
+    user_id = str(uuid.uuid4())
+
+    try:
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO users (
+                    user_id, first_name, last_name, email,
+                    phone_number, city, zip_code,
+                    password_hash, password_salt, is_verified
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    user_id,
+                    first_name.strip(),
+                    last_name.strip(),
+                    normalized_email,
+                    phone_number.strip() or None,
+                    city.strip() or None,
+                    zip_code.strip() or None,
+                    password_hash,
+                    password_salt,
+                ),
+            )
+            connection.commit()
+        return True, user_id
+    except sqlite3.IntegrityError:
+        return False, "A user with this email already exists."
+    except Exception:
+        return False, "Unable to create account right now. Please try again."
+
+
+def authenticate_user(email: str, password: str) -> tuple[bool, Optional[dict], str]:
+    """Authenticate user by email and password."""
+    normalized_email = email.strip().lower()
+    with get_db_connection() as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT user_id, first_name, last_name, email, password_hash, password_salt
+            FROM users
+            WHERE email = ?
+            """,
+            (normalized_email,),
+        )
+        row = cursor.fetchone()
+
+    if not row:
+        return False, None, "No account found with this email."
+
+    user_data = {
+        "user_id": row[0],
+        "first_name": row[1],
+        "last_name": row[2],
+        "email": row[3],
+    }
+    if not verify_password(password, row[4], row[5]):
+        return False, None, "Invalid password."
+
+    return True, user_data, ""
+
+
+def upsert_profile(user_id: str, age: Optional[int], lifestyle_parameters: str, personal_details: str) -> bool:
+    """Create or update profile details for a user."""
+    try:
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO profile (user_id, age, lifestyle_parameters, personal_details, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    age = excluded.age,
+                    lifestyle_parameters = excluded.lifestyle_parameters,
+                    personal_details = excluded.personal_details,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    user_id,
+                    age,
+                    lifestyle_parameters.strip() or None,
+                    personal_details.strip() or None,
+                ),
+            )
+            connection.commit()
+        return True
+    except Exception:
+        return False
+
+
+def save_user_daily_input_to_sql(user_id: str, answers: dict, prediction: dict, cluster: int) -> tuple[bool, str]:
+    """Save one daily questionnaire response per user to SQL."""
+    today_value = date.today().isoformat()
+    submitted_at = datetime.now().isoformat()
+
+    try:
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO daily_inputs (
+                    user_id, input_date, submitted_at, answers_json, prediction_json, cluster
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    today_value,
+                    submitted_at,
+                    json.dumps(answers),
+                    json.dumps(prediction),
+                    cluster,
+                ),
+            )
+            connection.commit()
+        return True, ""
+    except sqlite3.IntegrityError:
+        return False, "You have already submitted today's input. Please come back tomorrow."
+    except Exception:
+        return False, "Unable to save your daily input right now."
+
+
+def parse_prediction_json(prediction_json: str) -> dict:
+    """Safely parse prediction JSON payload."""
+    try:
+        if not prediction_json:
+            return {}
+        parsed = json.loads(prediction_json)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def get_admin_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Fetch users and daily input records for admin view."""
+    with get_db_connection() as connection:
+        users_df = pd.read_sql_query(
+            """
+            SELECT
+                u.user_id,
+                u.first_name,
+                u.last_name,
+                u.email,
+                u.phone_number,
+                u.city,
+                u.zip_code,
+                u.created_at,
+                COUNT(d.entry_id) AS total_entries,
+                MAX(d.input_date) AS last_input_date
+            FROM users u
+            LEFT JOIN daily_inputs d ON u.user_id = d.user_id
+            GROUP BY
+                u.user_id,
+                u.first_name,
+                u.last_name,
+                u.email,
+                u.phone_number,
+                u.city,
+                u.zip_code,
+                u.created_at
+            ORDER BY u.created_at DESC
+            """,
+            connection,
+        )
+
+        daily_df = pd.read_sql_query(
+            """
+            SELECT
+                entry_id,
+                user_id,
+                input_date,
+                submitted_at,
+                prediction_json,
+                cluster
+            FROM daily_inputs
+            ORDER BY submitted_at DESC
+            """,
+            connection,
+        )
+
+    if not daily_df.empty:
+        parsed_predictions = daily_df["prediction_json"].apply(parse_prediction_json)
+        daily_df["stress_level"] = parsed_predictions.apply(lambda p: p.get("stress_level"))
+        daily_df["anxiety_score"] = parsed_predictions.apply(lambda p: p.get("anxiety_score"))
+        daily_df["depression_score"] = parsed_predictions.apply(lambda p: p.get("depression_score"))
+
+    return users_df, daily_df
+
+
+def render_admin_page() -> None:
+    """Render a simple admin page for users and daily trends."""
+    st.markdown("<div class='content-placeholder'>", unsafe_allow_html=True)
+    st.markdown("<div class='middle-section'>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>Admin View</h1>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>Users and Daily History Trends</h2>", unsafe_allow_html=True)
+
+    users_df, daily_df = get_admin_data()
+
+    total_users = int(len(users_df))
+    total_entries = int(len(daily_df))
+    today_entries = int((daily_df["input_date"] == date.today().isoformat()).sum()) if not daily_df.empty else 0
+
+    metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
+    with metric_col_1:
+        st.metric("Total Users", total_users)
+    with metric_col_2:
+        st.metric("Total Daily Entries", total_entries)
+    with metric_col_3:
+        st.metric("Today's Entries", today_entries)
+
+    st.markdown("#### 👥 Users")
+    if users_df.empty:
+        st.info("No users found yet.")
+    else:
+        users_display = users_df[[
+            "first_name", "last_name", "email", "phone_number", "city", "zip_code", "total_entries", "last_input_date"
+        ]].copy()
+        users_display = users_display.rename(
+            columns={
+                "first_name": "First Name",
+                "last_name": "Last Name",
+                "email": "Email",
+                "phone_number": "Phone",
+                "city": "City",
+                "zip_code": "ZIP",
+                "total_entries": "Entries",
+                "last_input_date": "Last Input Date",
+            }
+        )
+        st.dataframe(users_display, hide_index=True)
+
+    st.markdown("#### 📈 Daily Trend")
+    if daily_df.empty:
+        st.info("No daily input history found yet.")
+    else:
+        trend_df = (
+            daily_df.groupby("input_date", as_index=False)
+            .agg(submissions=("entry_id", "count"), avg_stress=("stress_level", "mean"))
+            .sort_values("input_date")
+        )
+
+        trend_fig = go.Figure()
+        trend_fig.add_trace(
+            go.Bar(
+                x=trend_df["input_date"],
+                y=trend_df["submissions"],
+                name="Submissions",
+                marker_color="#5B7FEA",
+                yaxis="y",
+            )
+        )
+        trend_fig.add_trace(
+            go.Scatter(
+                x=trend_df["input_date"],
+                y=trend_df["avg_stress"],
+                mode="lines+markers",
+                name="Avg Stress",
+                marker_color="#9B7FB5",
+                yaxis="y2",
+            )
+        )
+        trend_fig.update_layout(
+            xaxis_title="Date",
+            yaxis=dict(title="Submissions"),
+            yaxis2=dict(title="Avg Stress", overlaying="y", side="right", range=[0, 5]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            height=360,
+            margin=dict(l=20, r=20, t=30, b=20),
+        )
+        st.plotly_chart(trend_fig, width="stretch")
+
+        st.markdown("#### 🧾 User Daily History")
+        user_option_map = {
+            f"{row['first_name']} {row['last_name']} ({row['email']})": row["user_id"]
+            for _, row in users_df.iterrows()
+        }
+        selected_user_label = st.selectbox("Select user", options=list(user_option_map.keys()))
+        selected_user_id = user_option_map[selected_user_label]
+
+        user_history_df = daily_df[daily_df["user_id"] == selected_user_id].copy()
+        user_history_df = user_history_df.sort_values("submitted_at")
+
+        if user_history_df.empty:
+            st.info("This user has no daily entries yet.")
+        else:
+            user_stress_fig = go.Figure()
+            user_stress_fig.add_trace(
+                go.Scatter(
+                    x=user_history_df["input_date"],
+                    y=user_history_df["stress_level"],
+                    mode="lines+markers",
+                    name="Stress Level",
+                    marker_color="#3F2456",
+                )
+            )
+            user_stress_fig.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Stress Level",
+                yaxis=dict(range=[0, 5]),
+                height=300,
+                margin=dict(l=20, r=20, t=20, b=20),
+            )
+            st.plotly_chart(user_stress_fig, width="stretch")
+
+            history_display = user_history_df[[
+                "input_date", "submitted_at", "stress_level", "anxiety_score", "depression_score", "cluster"
+            ]].copy()
+            history_display = history_display.rename(
+                columns={
+                    "input_date": "Date",
+                    "submitted_at": "Submitted At",
+                    "stress_level": "Stress",
+                    "anxiety_score": "Anxiety %",
+                    "depression_score": "Depression %",
+                    "cluster": "Cluster",
+                }
+            )
+            st.dataframe(history_display, hide_index=True)
+
+    if st.button("← Back to AuraCheck", key="admin_back_to_main", width="stretch"):
+        st.session_state["auth_page"] = "main"
+        st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def save_user_response_to_json(answers: dict, prediction: dict, cluster: int) -> None:
     """Save user response to JSON file."""
     try:
@@ -721,6 +1142,9 @@ def initialize_state() -> None:
         "last_cluster": None,
         "show_results": False,
         "auth_page": "main",
+        "current_user_id": None,
+        "current_user_email": None,
+        "current_user_name": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -754,6 +1178,11 @@ def render_auth_page(auth_page: str) -> None:
             first_name = st.text_input("First Name")
             last_name = st.text_input("Last Name")
             signup_email = st.text_input("Email Address")
+            phone_number = st.text_input("Phone Number (Optional)")
+            city = st.text_input("City (Optional)")
+            zip_code = st.text_input("ZIP (Optional)")
+            signup_password = st.text_input("Password", type="password")
+            signup_confirm_password = st.text_input("Confirm Password", type="password")
             signup_submit = st.form_submit_button("Sign Up", width="stretch")
 
         if signup_submit:
@@ -761,8 +1190,24 @@ def render_auth_page(auth_page: str) -> None:
                 st.warning("⚠️ Please fill in first name, last name, and email address.")
             elif "@" not in signup_email or "." not in signup_email:
                 st.warning("⚠️ Please enter a valid email address.")
+            elif len(signup_password) < 8:
+                st.warning("⚠️ Password must be at least 8 characters.")
+            elif signup_password != signup_confirm_password:
+                st.warning("⚠️ Password and confirm password do not match.")
             else:
-                st.success(f"✅ Verification link has been sent to {signup_email.strip()}.")
+                created, message = create_user(
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=signup_email,
+                    password=signup_password,
+                    phone_number=phone_number,
+                    city=city,
+                    zip_code=zip_code,
+                )
+                if created:
+                    st.success(f"✅ Verification link has been sent to {signup_email.strip().lower()}.")
+                else:
+                    st.warning(f"⚠️ {message}")
 
         if st.button("Already have an account? Log In", key="goto_login", width="stretch"):
             st.session_state["auth_page"] = "login"
@@ -781,7 +1226,16 @@ def render_auth_page(auth_page: str) -> None:
             if not login_email.strip() or not login_password.strip():
                 st.warning("⚠️ Please enter your email and password.")
             else:
-                st.success("✅ Login submitted.")
+                is_valid, user_data, auth_message = authenticate_user(login_email, login_password)
+                if is_valid and user_data:
+                    st.session_state["current_user_id"] = user_data["user_id"]
+                    st.session_state["current_user_email"] = user_data["email"]
+                    st.session_state["current_user_name"] = f"{user_data['first_name']} {user_data['last_name']}"
+                    st.session_state["auth_page"] = "profile"
+                    st.success("✅ Login successful.")
+                    st.rerun()
+                else:
+                    st.warning(f"⚠️ {auth_message}")
 
         st.markdown("<h4 style='text-align: center;'>Forgot Password?</h4>", unsafe_allow_html=True)
         forgot_email = st.text_input("Email for password reset", key="forgot_email")
@@ -801,6 +1255,43 @@ def render_auth_page(auth_page: str) -> None:
         st.session_state["auth_page"] = "main"
         st.rerun()
 
+    if auth_page == "profile":
+        st.markdown("<h1 style='text-align: center;'>Profile</h1>", unsafe_allow_html=True)
+        current_name = st.session_state.get("current_user_name") or "User"
+        current_email = st.session_state.get("current_user_email") or ""
+        st.markdown(f"<h2 style='text-align: center;'>Welcome, {current_name}</h2>", unsafe_allow_html=True)
+        if current_email:
+            st.markdown(f"<p style='text-align: center;'>Logged in as {current_email}</p>", unsafe_allow_html=True)
+
+        with st.form("profile_form"):
+            age = st.number_input("Age", min_value=10, max_value=120, step=1)
+            lifestyle_parameters = st.text_area("Lifestyle Parameters", placeholder="Sleep habits, activity level, diet, etc.")
+            personal_details = st.text_area("Personal Details", placeholder="Anything else you'd like to share.")
+            save_profile_submit = st.form_submit_button("Save Profile", width="stretch")
+
+        if save_profile_submit:
+            saved = upsert_profile(
+                user_id=st.session_state.get("current_user_id"),
+                age=int(age) if age else None,
+                lifestyle_parameters=lifestyle_parameters,
+                personal_details=personal_details,
+            )
+            if saved:
+                st.success("✅ Profile saved successfully.")
+            else:
+                st.warning("⚠️ Unable to save profile right now.")
+
+        if st.button("Continue to AuraCheck", key="profile_to_main", width="stretch"):
+            st.session_state["auth_page"] = "main"
+            st.rerun()
+
+        if st.button("Log Out", key="logout_btn", width="stretch"):
+            st.session_state["current_user_id"] = None
+            st.session_state["current_user_email"] = None
+            st.session_state["current_user_name"] = None
+            st.session_state["auth_page"] = "main"
+            st.rerun()
+
     st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -810,8 +1301,13 @@ def main():
     
     models = get_static_models()
     initialize_state()
+    init_database()
 
-    if st.session_state.get("auth_page") in {"signup", "login"}:
+    if st.session_state.get("auth_page") == "admin":
+        render_admin_page()
+        return
+
+    if st.session_state.get("auth_page") in {"signup", "login", "profile"}:
         render_auth_page(st.session_state.get("auth_page"))
         return
     
@@ -981,6 +1477,17 @@ def main():
                 st.session_state["show_results"] = True
                 
                 save_user_response_to_json(answers, prediction, cluster)
+                if st.session_state.get("current_user_id"):
+                    saved_to_sql, save_message = save_user_daily_input_to_sql(
+                        user_id=st.session_state.get("current_user_id"),
+                        answers=answers,
+                        prediction=prediction,
+                        cluster=cluster,
+                    )
+                    if not saved_to_sql:
+                        st.warning(f"⚠️ {save_message}")
+                else:
+                    st.info("ℹ️ Log in to save daily inputs to your account history.")
         st.markdown("</div>", unsafe_allow_html=True)
         
         # Results Display
@@ -1056,20 +1563,45 @@ def main():
     
     # ========== RIGHT COLUMN: Authentication ==========
     with right_col:
+        if st.session_state.get("current_user_id"):
+            st.markdown("<div class='auth-header'>Logged In</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div class='auth-subtext'>{st.session_state.get('current_user_name')}<br/>{st.session_state.get('current_user_email')}</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
+            if st.button("👤 Profile", key="profile_btn", width="stretch"):
+                st.session_state["auth_page"] = "profile"
+                st.rerun()
+            if st.button("🛠️ Admin View", key="admin_btn_logged_in", width="stretch"):
+                st.session_state["auth_page"] = "admin"
+                st.rerun()
+            if st.button("🚪 Log Out", key="logout_main_btn", width="stretch"):
+                st.session_state["current_user_id"] = None
+                st.session_state["current_user_email"] = None
+                st.session_state["current_user_name"] = None
+                st.rerun()
+            st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='auth-subtext'>Daily SQL history enabled</div>", unsafe_allow_html=True)
+        else:
         
-        st.markdown("<div class='auth-header'>Join AuraCheck</div>", unsafe_allow_html=True)
-        st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
-        
-        if st.button("⭐ Sign Up", key="signup_btn", width="stretch"):
-            st.session_state["auth_page"] = "signup"
-            st.rerun()
-        st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-        if st.button("📝 Log In", key="login_btn", width="stretch"):
-            st.session_state["auth_page"] = "login"
-            st.rerun()
-        
-        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='auth-subtext'>Save your progress &<br/>track your journey</div>", unsafe_allow_html=True)
+            st.markdown("<div class='auth-header'>Join AuraCheck</div>", unsafe_allow_html=True)
+            st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+            
+            if st.button("⭐ Sign Up", key="signup_btn", width="stretch"):
+                st.session_state["auth_page"] = "signup"
+                st.rerun()
+            st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
+            if st.button("📝 Log In", key="login_btn", width="stretch"):
+                st.session_state["auth_page"] = "login"
+                st.rerun()
+            st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
+            if st.button("🛠️ Admin View", key="admin_btn_logged_out", width="stretch"):
+                st.session_state["auth_page"] = "admin"
+                st.rerun()
+            
+            st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='auth-subtext'>Save your progress &<br/>track your journey</div>", unsafe_allow_html=True)
     
     # --- CLOSE CONTENT PLACEHOLDER ---
     st.markdown("</div>", unsafe_allow_html=True)
