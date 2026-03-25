@@ -23,7 +23,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, f1_score, log_loss
 
 ROOT = "/Users/edgarvidriales/Desktop/AuraCheck/auracheck"
-OUT_DIR = os.path.join(ROOT, "baseline", "outputs", "final_3class_model")
+OUT_DIR = os.path.join(ROOT, "baseline", "outputs", "final_baseline_model")
 
 OUT_PDF = os.path.join(OUT_DIR, "final_process_baseline_comparison_report.pdf")
 OUT_TXT = os.path.join(OUT_DIR, "final_process_baseline_comparison_report_summary.txt")
@@ -33,7 +33,7 @@ OUT_SENS_SPEC = os.path.join(OUT_DIR, "final_selected_baseline_sensitivity_speci
 OUT_MODEL_WRITTEN = os.path.join(OUT_DIR, "final_model_written_out.txt")
 OUT_ASSUMPTIONS_TXT = os.path.join(OUT_DIR, "final_model_assumption_checks.txt")
 
-DATA_PATH = os.path.join(ROOT, "Dataset", "students_mental_health_survey_with_3class_burnout.csv")
+DATA_PATH = "/Users/edgarvidriales/Desktop/AuraCheck/auracheck/Dataset/students_mental_health_survey_with_burnout_final.csv"
 CLASS_NAMES = ["Very Low (Q1)", "Low (Q2)", "Moderate (Q3)", "High (Q4)"]
 FEATURES_PRUNED = [
     "Course", "Gender", "Sleep_Quality", "Physical_Activity", "Diet_Quality",
@@ -672,27 +672,19 @@ def main():
         tm.auto_set_font_size(False)
         tm.set_fontsize(10)
         tm.scale(1.0, 1.5)
-        plt.text(0.12, 0.12, "Metric definitions are shown on the next page.", fontsize=9.2)
+
+        plt.text(0.12, 0.18, "Metric definitions:", fontsize=9.2, weight="bold")
+        plt.text(0.12, 0.15, "• Accuracy: proportion of all predictions that are correct.", fontsize=8.6)
+        plt.text(0.12, 0.12, "• Cohen's Kappa: agreement beyond chance (1=perfect, 0=chance-level).", fontsize=8.6)
+        plt.text(0.12, 0.09, "• Macro Recall: average recall across classes (treats classes equally).", fontsize=8.6)
+        plt.text(0.12, 0.06, "• Log Loss: penalizes incorrect/overconfident probabilities (lower is better).", fontsize=8.6)
+        plt.text(0.12, 0.03, "• Macro F1: harmonic mean of precision/recall per class, averaged equally.", fontsize=8.6)
+        plt.text(0.12, 0.01, "• Recall - Q1/Q2/Q3/Q4: class-specific sensitivity = TP/(TP+FN).", fontsize=8.6)
+        plt.text(0.12, 0.005, "Interpretation: higher is better for most metrics; lower is better for Log Loss.", fontsize=8.6)
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
 
-        # Page 6: metric definitions
-        fig = plt.figure(figsize=(8.5, 11))
-        plt.axis("off")
-        plt.text(0.5, 0.95, "Metric Definitions", ha="center", fontsize=14, weight="bold")
-        plt.text(0.08, 0.88, "• Accuracy: proportion of all predictions that are correct.", fontsize=10)
-        plt.text(0.08, 0.83, "• Cohen's Kappa: agreement beyond chance (1=perfect, 0=chance-level).", fontsize=10)
-        plt.text(0.08, 0.78, "• Macro Recall: average recall across classes (treats classes equally).", fontsize=10)
-        plt.text(0.08, 0.73, "• Log Loss: penalizes incorrect/overconfident probabilities (lower is better).", fontsize=10)
-        plt.text(0.08, 0.68, "• Macro F1: harmonic mean of precision and recall per class, averaged equally.", fontsize=10)
-        plt.text(0.08, 0.63, "• Recall - Q1/Q2/Q3/Q4: class-specific sensitivity = TP/(TP+FN).", fontsize=10)
-        plt.text(0.08, 0.55, "Interpretation:", fontsize=11, weight="bold")
-        plt.text(0.08, 0.50, "• Higher is better for Accuracy, Kappa, Macro Recall, Macro F1, and per-class Recall.", fontsize=10)
-        plt.text(0.08, 0.45, "• Lower is better for Log Loss.", fontsize=10)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-
-        # Page 7: confusion matrix + sensitivity/specificity
+        # Page 6: confusion matrix + sensitivity/specificity
         fig, axes = plt.subplots(2, 1, figsize=(8.5, 11))
         sns.heatmap(cm_df, annot=True, fmt="d", cmap="Blues", cbar=False, ax=axes[0])
         axes[0].set_title("Selected Baseline: Confusion Matrix (test)")
@@ -735,7 +727,7 @@ def main():
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
 
-        # Page 8: regression table (balanced coefficients)
+        # Page 7: regression table (balanced coefficients)
         if sk is not None and len(sk) > 0:
             fig, ax = plt.subplots(figsize=(11, 8.5))
             ax.axis("off")
@@ -757,7 +749,7 @@ def main():
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
 
-        # Page 9: regression table (p-values from companion model)
+        # Page 8: regression table (p-values from companion model)
         if sm is not None and len(sm) > 0:
             fig, ax = plt.subplots(figsize=(11, 8.5))
             ax.axis("off")
@@ -777,7 +769,7 @@ def main():
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
 
-        # Page 10: usage examples
+        # Page 9: usage examples
         fig = plt.figure(figsize=(8.5, 11))
         plt.axis("off")
         plt.text(0.5, 0.95, "Usage Example: Student Answers to Outcome", ha="center", fontsize=14, weight="bold")
@@ -809,7 +801,7 @@ def main():
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
 
-        # Page 11: prediction process explanation for student example
+        # Page 10: prediction process explanation for student example
         if walkthrough_json is not None:
             fig = plt.figure(figsize=(8.5, 11))
             plt.axis("off")

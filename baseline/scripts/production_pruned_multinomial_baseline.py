@@ -20,8 +20,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, cohen_kappa_score, recall_score
 
 ROOT = "/Users/edgarvidriales/Desktop/AuraCheck/auracheck"
-DATA_PATH = os.path.join(ROOT, "Dataset", "students_mental_health_survey_with_3class_burnout.csv")
-OUT_DIR = os.path.join(ROOT, "EDA", "Uma", "Edgar", "outputs", "final_3class_model")
+DATA_PATH = "/Users/edgarvidriales/Desktop/AuraCheck/auracheck/Dataset/students_mental_health_survey_with_burnout_final.csv"
+OUT_DIR = os.path.join(ROOT, "baseline", "outputs", "final_baseline_model")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 MODEL_PATH = os.path.join(OUT_DIR, "production_pruned_multinomial_model.joblib")

@@ -1,8 +1,8 @@
 FINAL PROCESS + BASELINE COMPARISON REPORT SUMMARY
 ============================================================================================
 
-Report PDF: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_3class_model/final_process_baseline_comparison_report.pdf
-Comparison table CSV: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_3class_model/final_baseline_candidate_comparison_table.csv
+Report PDF: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_process_baseline_comparison_report.pdf
+Comparison table CSV: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_baseline_candidate_comparison_table.csv
 
 Selected baseline
 --------------------------------------------------------------------------------------------
@@ -35,8 +35,8 @@ Recall_High: 0.204787
 
 Selected baseline confusion matrix and rates
 --------------------------------------------------------------------------------------------
-Confusion matrix CSV: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_3class_model/final_selected_baseline_confusion_matrix.csv
-Sensitivity/specificity CSV: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_3class_model/final_selected_baseline_sensitivity_specificity.csv
+Confusion matrix CSV: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_selected_baseline_confusion_matrix.csv
+Sensitivity/specificity CSV: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_selected_baseline_sensitivity_specificity.csv
 
 Definitions:
 • Sensitivity (Recall) = TP / (TP + FN): among true class members, fraction correctly identified.
@@ -50,12 +50,12 @@ Moderate (Q3)            0.287554     0.666884 134 332 511 1023
 
 Model written out
 --------------------------------------------------------------------------------------------
-Model equation text file: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_3class_model/final_model_written_out.txt
+Model equation text file: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_model_written_out.txt
 
 Model type and assumption checks
 --------------------------------------------------------------------------------------------
 Model type: Balanced Multinomial Logistic Regression
-Assumption checks text file: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_3class_model/final_model_assumption_checks.txt
+Assumption checks text file: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_model_assumption_checks.txt
 
                      Check                                       Result Status
         Solver convergence                  n_iter_max=2, max_iter=5000   PASS
@@ -68,4 +68,3 @@ Baseline candidate comparison section removed from report by request.
 Regression tables included in report:
 • Balanced multinomial coefficient table
 • Companion MNLogit coefficient + p-value table
-• Student prediction process page (encoding → z-scores → etas → softmax)
