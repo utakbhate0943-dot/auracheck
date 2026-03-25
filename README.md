@@ -30,6 +30,7 @@ SUPABASE_URL=your_supabase_project_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-4.1-mini
+ADMIN_EMAIL=utakbhate0943@sdsu.com
 ```
 
 ### 3) Create Supabase tables

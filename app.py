@@ -19,6 +19,8 @@ from openai import OpenAI
 
 load_dotenv()
 
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "utakbhate0943@sdsu.com").strip().lower()
+
 st.set_page_config(page_title="AuraCheck", page_icon="💜", layout="wide")
 
 # Custom CSS - Light purple background with single card design
@@ -748,6 +750,22 @@ def init_database() -> None:
             );
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS daily_feedback (
+                feedback_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                input_date TEXT NOT NULL,
+                recommendation_followed INTEGER,
+                recommendation_helpful INTEGER,
+                feedback_rating INTEGER,
+                app_feedback TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                UNIQUE(user_id, input_date)
+            );
+            """
+        )
         connection.commit()
 
 
@@ -898,6 +916,100 @@ def save_user_daily_input_to_sql(user_id: str, answers: dict, prediction: dict, 
         return False, "You have already submitted today's input. Please come back tomorrow."
     except Exception:
         return False, "Unable to save your daily input right now."
+
+
+def has_user_submitted_today(user_id: str) -> bool:
+    """Check whether user already submitted daily survey today."""
+    today_value = date.today().isoformat()
+    with get_db_connection() as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT 1
+            FROM daily_inputs
+            WHERE user_id = ? AND input_date = ?
+            LIMIT 1
+            """,
+            (user_id, today_value),
+        )
+        return cursor.fetchone() is not None
+
+
+def upsert_daily_feedback(
+    user_id: str,
+    input_date: str,
+    recommendation_followed: Optional[bool],
+    recommendation_helpful: Optional[bool],
+    feedback_rating: Optional[int],
+    app_feedback: str,
+) -> tuple[bool, str]:
+    """Create or update per-day recommendation/app feedback for a user."""
+    try:
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO daily_feedback (
+                    user_id, input_date, recommendation_followed,
+                    recommendation_helpful, feedback_rating, app_feedback, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id, input_date) DO UPDATE SET
+                    recommendation_followed = excluded.recommendation_followed,
+                    recommendation_helpful = excluded.recommendation_helpful,
+                    feedback_rating = excluded.feedback_rating,
+                    app_feedback = excluded.app_feedback,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    user_id,
+                    input_date,
+                    None if recommendation_followed is None else int(recommendation_followed),
+                    None if recommendation_helpful is None else int(recommendation_helpful),
+                    feedback_rating,
+                    app_feedback.strip() or None,
+                ),
+            )
+            connection.commit()
+        return True, ""
+    except Exception:
+        return False, "Unable to save feedback right now."
+
+
+def get_user_daily_history(user_id: str) -> pd.DataFrame:
+    """Fetch a user's day-by-day survey history with optional feedback."""
+    with get_db_connection() as connection:
+        history_df = pd.read_sql_query(
+            """
+            SELECT
+                d.entry_id,
+                d.user_id,
+                d.input_date,
+                d.submitted_at,
+                d.prediction_json,
+                d.cluster,
+                f.recommendation_followed,
+                f.recommendation_helpful,
+                f.feedback_rating,
+                f.app_feedback
+            FROM daily_inputs d
+            LEFT JOIN daily_feedback f
+              ON d.user_id = f.user_id
+             AND d.input_date = f.input_date
+            WHERE d.user_id = ?
+            ORDER BY d.input_date ASC
+            """,
+            connection,
+            params=(user_id,),
+        )
+
+    if history_df.empty:
+        return history_df
+
+    parsed_predictions = history_df["prediction_json"].apply(parse_prediction_json)
+    history_df["stress_level"] = parsed_predictions.apply(lambda p: p.get("stress_level"))
+    history_df["anxiety_score"] = parsed_predictions.apply(lambda p: p.get("anxiety_score"))
+    history_df["depression_score"] = parsed_predictions.apply(lambda p: p.get("depression_score"))
+    history_df["mental_health_pct"] = parsed_predictions.apply(lambda p: p.get("mental_health_pct"))
+    return history_df
 
 
 def parse_prediction_json(prediction_json: str) -> dict:
@@ -1151,6 +1263,151 @@ def initialize_state() -> None:
             st.session_state[key] = value
 
 
+def reset_survey_state() -> None:
+    """Reset questionnaire and latest result state."""
+    st.session_state["last_answers"] = {}
+    st.session_state["last_prediction"] = None
+    st.session_state["last_cluster"] = None
+    st.session_state["show_results"] = False
+
+
+def render_user_progress_section(user_id: str) -> None:
+    """Render per-user day-by-day progress charts, insights, and feedback form."""
+    history_df = get_user_daily_history(user_id)
+
+    st.markdown("#### 📈 Your Day-by-Day Progress")
+    if history_df.empty:
+        st.info("No saved daily history yet. Complete today's survey to start tracking progress.")
+        return
+
+    trend_fig = go.Figure()
+    trend_fig.add_trace(
+        go.Scatter(
+            x=history_df["input_date"],
+            y=history_df["stress_level"],
+            mode="lines+markers",
+            name="Stress",
+            marker_color="#9B7FB5",
+            yaxis="y",
+        )
+    )
+    trend_fig.add_trace(
+        go.Scatter(
+            x=history_df["input_date"],
+            y=history_df["mental_health_pct"],
+            mode="lines+markers",
+            name="Mental Health %",
+            marker_color="#5B7FEA",
+            yaxis="y2",
+        )
+    )
+    trend_fig.update_layout(
+        xaxis_title="Date",
+        yaxis=dict(title="Stress", range=[0, 5]),
+        yaxis2=dict(title="Mental Health %", overlaying="y", side="right", range=[0, 100]),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        height=320,
+        margin=dict(l=20, r=20, t=30, b=20),
+    )
+    st.plotly_chart(trend_fig, width="stretch")
+
+    latest = history_df.iloc[-1]
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.metric("Latest Stress", f"{float(latest['stress_level']):.1f}/5" if pd.notna(latest["stress_level"]) else "N/A")
+    with col_b:
+        st.metric("Latest Mental Health", f"{float(latest['mental_health_pct']):.1f}%" if pd.notna(latest["mental_health_pct"]) else "N/A")
+    with col_c:
+        st.metric("Entries", str(len(history_df)))
+
+    if len(history_df) >= 2:
+        prev = history_df.iloc[-2]
+        stress_improvement = (float(prev["stress_level"]) - float(latest["stress_level"])) if pd.notna(prev["stress_level"]) and pd.notna(latest["stress_level"]) else 0.0
+        wellbeing_change = (float(latest["mental_health_pct"]) - float(prev["mental_health_pct"])) if pd.notna(prev["mental_health_pct"]) and pd.notna(latest["mental_health_pct"]) else 0.0
+
+        if stress_improvement > 0:
+            st.success(f"✅ Improvement: stress improved by {stress_improvement:.1f} vs previous day.")
+        elif stress_improvement < 0:
+            st.warning(f"⚠️ Stress increased by {abs(stress_improvement):.1f} vs previous day.")
+        else:
+            st.info("ℹ️ Stress is unchanged vs previous day.")
+
+        if wellbeing_change > 0:
+            st.success(f"✅ Mental health score improved by {wellbeing_change:.1f}% vs previous day.")
+        elif wellbeing_change < 0:
+            st.warning(f"⚠️ Mental health score decreased by {abs(wellbeing_change):.1f}% vs previous day.")
+
+    effectiveness_df = history_df.dropna(subset=["recommendation_followed", "stress_level"])
+    if len(effectiveness_df) >= 3:
+        followed = effectiveness_df[effectiveness_df["recommendation_followed"] == 1]
+        not_followed = effectiveness_df[effectiveness_df["recommendation_followed"] == 0]
+        if not followed.empty and not not_followed.empty:
+            followed_avg = float(followed["stress_level"].mean())
+            not_followed_avg = float(not_followed["stress_level"].mean())
+            if followed_avg < not_followed_avg:
+                st.success("✅ Days marked as following recommendations show lower average stress.")
+            elif followed_avg > not_followed_avg:
+                st.info("ℹ️ Recommendation effect is not yet clear. Keep tracking daily for stronger signal.")
+
+    st.markdown("#### 📝 Recommendation & App Feedback")
+    today_value = date.today().isoformat()
+    today_row = history_df[history_df["input_date"] == today_value]
+    if today_row.empty:
+        st.info("Submit today's survey first, then share whether recommendations helped.")
+    else:
+        existing = today_row.iloc[-1]
+
+        follow_default = "Not yet"
+        if pd.notna(existing.get("recommendation_followed")):
+            follow_default = "Yes" if int(existing["recommendation_followed"]) == 1 else "No"
+
+        helpful_default = "Not sure"
+        if pd.notna(existing.get("recommendation_helpful")):
+            helpful_default = "Yes" if int(existing["recommendation_helpful"]) == 1 else "No"
+
+        rating_default = int(existing["feedback_rating"]) if pd.notna(existing.get("feedback_rating")) else 3
+        comment_default = str(existing["app_feedback"]) if pd.notna(existing.get("app_feedback")) else ""
+
+        with st.form("daily_feedback_form"):
+            followed_choice = st.radio(
+                "Did you follow today's recommendations?",
+                options=["Yes", "No", "Not yet"],
+                index=["Yes", "No", "Not yet"].index(follow_default),
+                horizontal=True,
+            )
+            helpful_choice = st.radio(
+                "Are the recommendations helping?",
+                options=["Yes", "No", "Not sure"],
+                index=["Yes", "No", "Not sure"].index(helpful_default),
+                horizontal=True,
+            )
+            feedback_rating = st.slider("App experience rating (1-5)", min_value=1, max_value=5, value=rating_default)
+            app_feedback = st.text_area("Feedback for app improvements", value=comment_default)
+            feedback_submit = st.form_submit_button("Save Feedback", width="stretch")
+
+        if feedback_submit:
+            followed_value = True if followed_choice == "Yes" else False if followed_choice == "No" else None
+            helpful_value = True if helpful_choice == "Yes" else False if helpful_choice == "No" else None
+            saved, message = upsert_daily_feedback(
+                user_id=user_id,
+                input_date=today_value,
+                recommendation_followed=followed_value,
+                recommendation_helpful=helpful_value,
+                feedback_rating=feedback_rating,
+                app_feedback=app_feedback,
+            )
+            if saved:
+                st.success("✅ Feedback saved. Thanks for helping improve AuraCheck.")
+            else:
+                st.warning(f"⚠️ {message}")
+
+
+def is_admin_user() -> bool:
+    """Return True only for the allowed admin email."""
+    current_email = (st.session_state.get("current_user_email") or "").strip().lower()
+    return current_email == ADMIN_EMAIL
+
+
 def all_required_answered(answers: dict, required_fields: list) -> bool:
     """Check that all required fields are answered with valid non-skipped values."""
     for field in required_fields:
@@ -1277,7 +1534,9 @@ def render_auth_page(auth_page: str) -> None:
                 personal_details=personal_details,
             )
             if saved:
+                reset_survey_state()
                 st.success("✅ Profile saved successfully.")
+                st.info("ℹ️ Survey has been reset. You can answer all questions again from the main page.")
             else:
                 st.warning("⚠️ Unable to save profile right now.")
 
@@ -1304,8 +1563,11 @@ def main():
     init_database()
 
     if st.session_state.get("auth_page") == "admin":
-        render_admin_page()
-        return
+        if is_admin_user():
+            render_admin_page()
+            return
+        st.session_state["auth_page"] = "main"
+        st.warning("⚠️ Admin view is restricted to authorized admin only.")
 
     if st.session_state.get("auth_page") in {"signup", "login", "profile"}:
         render_auth_page(st.session_state.get("auth_page"))
@@ -1408,6 +1670,11 @@ def main():
         
         current_question_idx = len(st.session_state.get("last_answers", {}))
         answers = st.session_state.get("last_answers", {})
+        current_user_id = st.session_state.get("current_user_id")
+        already_submitted_today = bool(current_user_id and has_user_submitted_today(current_user_id))
+
+        if already_submitted_today:
+            st.info("✅ You already submitted today's survey. Come back tomorrow for your next check-in.")
         
         # Progress Section
         if current_question_idx > 0:
@@ -1418,7 +1685,7 @@ def main():
         # Questions Display
         st.markdown("<div class='questions-section'>", unsafe_allow_html=True)
         
-        if current_question_idx < len(required_fields):
+        if current_question_idx < len(required_fields) and not already_submitted_today:
             current_field = required_fields[current_question_idx]
             options = get_field_options(current_field)
             question = get_question_for_field(current_field)
@@ -1440,15 +1707,17 @@ def main():
                     answers[current_field] = user_input
                     st.session_state["last_answers"] = answers
                     st.rerun()
-        else:
+        elif not already_submitted_today:
             st.markdown("<div style='text-align: center; padding: 30px 0;'><h3 style='color: #3F2456;'>✨ All set!</h3><p style='color: #7A6B8F;'>Click below to analyze your wellbeing</p></div>", unsafe_allow_html=True)
+        else:
+            st.markdown("<div style='text-align: center; padding: 30px 0;'><h3 style='color: #3F2456;'>📅 Daily survey completed</h3><p style='color: #7A6B8F;'>Your next survey unlocks tomorrow.</p></div>", unsafe_allow_html=True)
         
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
         
         # Analyze Button
         st.markdown("<div class='analyze-section'>", unsafe_allow_html=True)
-        if st.button("🔍 Analyze My Results", key="analyze_btn", width="stretch"):
+        if st.button("🔍 Analyze My Results", key="analyze_btn", width="stretch", disabled=already_submitted_today):
             if not all_required_answered(answers, required_fields):
                 st.warning("⚠️ Please answer all questions first!")
             else:
@@ -1488,6 +1757,10 @@ def main():
                         st.warning(f"⚠️ {save_message}")
                 else:
                     st.info("ℹ️ Log in to save daily inputs to your account history.")
+
+        if st.button("🔄 Start New Assessment", key="reset_assessment_btn", width="stretch"):
+            reset_survey_state()
+            st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         
         # Results Display
@@ -1558,6 +1831,11 @@ def main():
             
             st.markdown("</div>", unsafe_allow_html=True)
 
+        if current_user_id:
+            st.markdown("<div class='results-section'>", unsafe_allow_html=True)
+            render_user_progress_section(current_user_id)
+            st.markdown("</div>", unsafe_allow_html=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
         
     
@@ -1573,9 +1851,10 @@ def main():
             if st.button("👤 Profile", key="profile_btn", width="stretch"):
                 st.session_state["auth_page"] = "profile"
                 st.rerun()
-            if st.button("🛠️ Admin View", key="admin_btn_logged_in", width="stretch"):
-                st.session_state["auth_page"] = "admin"
-                st.rerun()
+            if is_admin_user():
+                if st.button("🛠️ Admin View", key="admin_btn_logged_in", width="stretch"):
+                    st.session_state["auth_page"] = "admin"
+                    st.rerun()
             if st.button("🚪 Log Out", key="logout_main_btn", width="stretch"):
                 st.session_state["current_user_id"] = None
                 st.session_state["current_user_email"] = None
@@ -1594,10 +1873,6 @@ def main():
             st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
             if st.button("📝 Log In", key="login_btn", width="stretch"):
                 st.session_state["auth_page"] = "login"
-                st.rerun()
-            st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-            if st.button("🛠️ Admin View", key="admin_btn_logged_out", width="stretch"):
-                st.session_state["auth_page"] = "admin"
                 st.rerun()
             
             st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
