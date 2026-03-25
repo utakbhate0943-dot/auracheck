@@ -27,7 +27,7 @@ st.markdown("""
     
     /* Light purple background */
     .stApp {
-        background: linear-gradient(135deg, #E8DFF5 0%, #F0E8FA 50%, #E6D9F0 100%);
+        background: linear-gradient(135deg, #E3D7F2 0%, #ECE0F7 50%, #DDCFEC 100%);
         min-height: 100vh;
         padding: 6px 15px;
     }
@@ -39,14 +39,14 @@ st.markdown("""
     
     /* Main container card - large single card */
     .main {
-        background: linear-gradient(135deg, rgba(232, 223, 245, 0.6) 0%, rgba(240, 232, 250, 0.6) 50%, rgba(230, 217, 240, 0.6) 100%);
+        background: linear-gradient(135deg, rgba(248, 244, 253, 0.95) 0%, rgba(244, 238, 251, 0.95) 50%, rgba(239, 232, 248, 0.95) 100%);
         border-radius: 40px;
         padding: 0;
         box-shadow: 0 35px 100px rgba(124, 91, 166, 0.3), 0 15px 50px rgba(155, 127, 181, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7);
         margin: 25px auto;
         max-width: 750px;
         width: 100%;
-        border: 5px solid #9B7FB5;
+        border: 5px solid #705291;
         overflow: hidden;
     }
     
@@ -89,12 +89,12 @@ st.markdown("""
         padding: 18px 28px;
         font-size: 17px;
         font-weight: 600;
-        border: 3px solid #5B7FEA !important;
+        border: 3px solid #355DCB !important;
         background-color: #FFFFFF !important;
-        color: #5B7FEA !important;
+        color: #1F3F9F !important;
         transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         margin-bottom: 14px;
-        box-shadow: 0 6px 16px rgba(91, 127, 234, 0.2), 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        box-shadow: 0 6px 16px rgba(53, 93, 203, 0.25), 0 2px 8px rgba(0, 0, 0, 0.12) !important;
         font-family: 'Inter', sans-serif;
         letter-spacing: 0.4px;
         text-transform: none;
@@ -102,11 +102,11 @@ st.markdown("""
     }
     
     .stButton > button:hover {
-        background: linear-gradient(135deg, #5B7FEA 0%, #4A6FD9 100%) !important;
+        background: linear-gradient(135deg, #355DCB 0%, #234AAE 100%) !important;
         color: #FFFFFF !important;
         transform: translateY(-4px);
-        border-color: #5B7FEA !important;
-        box-shadow: 0 16px 45px rgba(91, 127, 234, 0.5), 0 8px 20px rgba(0, 0, 0, 0.15) !important;
+        border-color: #355DCB !important;
+        box-shadow: 0 16px 45px rgba(53, 93, 203, 0.45), 0 8px 20px rgba(0, 0, 0, 0.2) !important;
     }
     
     .stButton > button:active {
@@ -173,7 +173,7 @@ st.markdown("""
     
     h2 {
         text-align: center;
-        color: #9B7FB5;
+        color: #5A3D79;
         font-size: 20px;
         font-weight: 500;
         margin: 0 0 30px 0;
@@ -192,7 +192,7 @@ st.markdown("""
     }
     
     h4 {
-        color: #5B4B6F;
+        color: #3D2C55;
         font-family: 'Inter', sans-serif;
         font-size: 18px;
         font-weight: 600;
@@ -202,7 +202,7 @@ st.markdown("""
     /* Question text */
     .question-text {
         text-align: center;
-        color: #5B4B6F;
+        color: #2F2142;
         font-size: 24px;
         margin: 30px 0 35px 0;
         font-weight: 600;
@@ -244,7 +244,7 @@ st.markdown("""
     /* Progress text */
     .progress-text {
         text-align: center;
-        color: #9B7FB5;
+        color: #5A3D79;
         font-size: 13px;
         font-weight: 600;
         margin-top: 12px;
@@ -261,9 +261,24 @@ st.markdown("""
     
     /* Text styling */
     p, span, label {
-        color: #6B5B7F;
+        color: #352549;
         font-weight: 500;
         line-height: 1.6;
+    }
+
+    .stTextInput label {
+        color: #2F2142 !important;
+        font-weight: 600 !important;
+    }
+
+    .stTextInput input {
+        color: #221532 !important;
+        background-color: #FFFFFF !important;
+        border: 2px solid #6C4B92 !important;
+    }
+
+    .stTextInput input::placeholder {
+        color: #6A5A82 !important;
     }
     
     /* Metric containers */
@@ -319,7 +334,7 @@ st.markdown("""
     
     /* Shiny purple placeholder - big background container */
     .content-placeholder {
-        background: linear-gradient(135deg, rgba(200, 170, 220, 0.25) 0%, rgba(190, 160, 210, 0.22) 50%, rgba(200, 170, 220, 0.28) 100%);
+        background: linear-gradient(135deg, rgba(229, 216, 241, 0.82) 0%, rgba(222, 208, 236, 0.8) 50%, rgba(216, 199, 232, 0.84) 100%);
         border-radius: 32px;
         padding: 0;
         position: relative;
@@ -434,7 +449,7 @@ st.markdown("""
     
     /* Good Thoughts Section */
     .good-thoughts-header {
-        color: #3F2456;
+        color: #2D1A42;
         font-size: 22px;
         font-weight: 700;
         text-align: center;
@@ -500,7 +515,7 @@ st.markdown("""
     }
     
     .auth-subtext {
-        color: #9B7FB5;
+        color: #4D3468;
         font-size: 12px;
         text-align: center;
         line-height: 1.5;
@@ -705,10 +720,89 @@ def initialize_state() -> None:
         "last_prediction": None,
         "last_cluster": None,
         "show_results": False,
+        "auth_page": "main",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+
+def all_required_answered(answers: dict, required_fields: list) -> bool:
+    """Check that all required fields are answered with valid non-skipped values."""
+    for field in required_fields:
+        value = answers.get(field)
+        if value is None:
+            return False
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized or normalized.lower() == "skipped":
+                return False
+    return True
+
+
+def render_auth_page(auth_page: str) -> None:
+    """Render dedicated authentication pages."""
+    st.markdown("<div class='content-placeholder'>", unsafe_allow_html=True)
+    st.markdown("<div class='middle-section'>", unsafe_allow_html=True)
+    st.image("Dataset/logo.jpg", width=90)
+
+    if auth_page == "signup":
+        st.markdown("<h1 style='text-align: center;'>Join AuraCheck</h1>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>Create your account</h2>", unsafe_allow_html=True)
+
+        with st.form("signup_form"):
+            first_name = st.text_input("First Name")
+            last_name = st.text_input("Last Name")
+            signup_email = st.text_input("Email Address")
+            signup_submit = st.form_submit_button("Sign Up", width="stretch")
+
+        if signup_submit:
+            if not first_name.strip() or not last_name.strip() or not signup_email.strip():
+                st.warning("⚠️ Please fill in first name, last name, and email address.")
+            elif "@" not in signup_email or "." not in signup_email:
+                st.warning("⚠️ Please enter a valid email address.")
+            else:
+                st.success(f"✅ Verification link has been sent to {signup_email.strip()}.")
+
+        if st.button("Already have an account? Log In", key="goto_login", width="stretch"):
+            st.session_state["auth_page"] = "login"
+            st.rerun()
+
+    if auth_page == "login":
+        st.markdown("<h1 style='text-align: center;'>Login</h1>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>Access your AuraCheck account</h2>", unsafe_allow_html=True)
+
+        with st.form("login_form"):
+            login_email = st.text_input("Email", key="login_email")
+            login_password = st.text_input("Password", type="password", key="login_password")
+            login_submit = st.form_submit_button("Log In", width="stretch")
+
+        if login_submit:
+            if not login_email.strip() or not login_password.strip():
+                st.warning("⚠️ Please enter your email and password.")
+            else:
+                st.success("✅ Login submitted.")
+
+        st.markdown("<h4 style='text-align: center;'>Forgot Password?</h4>", unsafe_allow_html=True)
+        forgot_email = st.text_input("Email for password reset", key="forgot_email")
+        if st.button("Send Reset Link", key="forgot_password_btn", width="stretch"):
+            if not forgot_email.strip():
+                st.warning("⚠️ Please enter your email address.")
+            elif "@" not in forgot_email or "." not in forgot_email:
+                st.warning("⚠️ Please enter a valid email address.")
+            else:
+                st.success(f"✅ Reset link has been sent to {forgot_email.strip()}.")
+
+        if st.button("Need an account? Sign Up", key="goto_signup", width="stretch"):
+            st.session_state["auth_page"] = "signup"
+            st.rerun()
+
+    if st.button("← Back to AuraCheck", key="back_to_main", width="stretch"):
+        st.session_state["auth_page"] = "main"
+        st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def main():
@@ -716,6 +810,10 @@ def main():
     
     models = get_static_models()
     initialize_state()
+
+    if st.session_state.get("auth_page") in {"signup", "login"}:
+        render_auth_page(st.session_state.get("auth_page"))
+        return
     
     # --- CONTENT PLACEHOLDER - Shiny purple background ---
     st.markdown("<div class='content-placeholder'>", unsafe_allow_html=True)
@@ -833,18 +931,11 @@ def main():
             
             if options:
                 for idx, option in enumerate(options):
-                    if st.button(option, key=f"btn_{current_field}_{idx}", use_container_width=True):
+                    if st.button(option, key=f"btn_{current_field}_{idx}", width="stretch"):
                         clean_value = option.split("(")[0].strip() if "(" in option else option
                         clean_value = ''.join(c for c in clean_value if ord(c) < 0x1F600 or ord(c) > 0x1F64F)
                         clean_value = clean_value.strip()
                         answers[current_field] = clean_value if clean_value else option
-                        st.session_state["last_answers"] = answers
-                        st.rerun()
-
-                skip_col_left, skip_col_mid, skip_col_right = st.columns([1, 1.2, 1])
-                with skip_col_mid:
-                    if st.button("⏭️ Skip This Question", key=f"skip_{current_field}", use_container_width=True):
-                        answers[current_field] = "Skipped"
                         st.session_state["last_answers"] = answers
                         st.rerun()
             else:
@@ -861,8 +952,8 @@ def main():
         
         # Analyze Button
         st.markdown("<div class='analyze-section'>", unsafe_allow_html=True)
-        if st.button("🔍 Analyze My Results", key="analyze_btn", use_container_width=True):
-            if len(answers) < len(required_fields):
+        if st.button("🔍 Analyze My Results", key="analyze_btn", width="stretch"):
+            if not all_required_answered(answers, required_fields):
                 st.warning("⚠️ Please answer all questions first!")
             else:
                 stress_level = predict_stress_level(answers)
@@ -919,7 +1010,7 @@ def main():
                     },
                 ))
                 fig_stress.update_layout(height=350, margin=dict(l=20, r=20, t=50, b=20))
-                st.plotly_chart(fig_stress, use_container_width=True)
+                st.plotly_chart(fig_stress, width="stretch")
             
             with col_gauge2:
                 wellbeing_value = 100 - (prediction["stress_level"] * 20)
@@ -938,7 +1029,7 @@ def main():
                     },
                 ))
                 fig_wellbeing.update_layout(height=350, margin=dict(l=20, r=20, t=50, b=20))
-                st.plotly_chart(fig_wellbeing, use_container_width=True)
+                st.plotly_chart(fig_wellbeing, width="stretch")
             
             # Metric Cards
             col_metrics = st.columns(3)
@@ -969,9 +1060,13 @@ def main():
         st.markdown("<div class='auth-header'>Join AuraCheck</div>", unsafe_allow_html=True)
         st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
         
-        st.button("⭐ Sign Up", key="signup_btn", use_container_width=True)
+        if st.button("⭐ Sign Up", key="signup_btn", width="stretch"):
+            st.session_state["auth_page"] = "signup"
+            st.rerun()
         st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-        st.button("📝 Log In", key="login_btn", use_container_width=True)
+        if st.button("📝 Log In", key="login_btn", width="stretch"):
+            st.session_state["auth_page"] = "login"
+            st.rerun()
         
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
         st.markdown("<div class='auth-subtext'>Save your progress &<br/>track your journey</div>", unsafe_allow_html=True)
