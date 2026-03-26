@@ -1,70 +1,23 @@
 FINAL PROCESS + BASELINE COMPARISON REPORT SUMMARY
 ============================================================================================
 
-Report PDF: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_process_baseline_comparison_report.pdf
-Comparison table CSV: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_baseline_candidate_comparison_table.csv
+Report PDF: baseline/outputs/final_baseline_model/final_process_baseline_comparison_report.pdf
+Comparison table CSV: baseline/outputs/final_baseline_model/final_baseline_candidate_comparison_table.csv
+Confusion matrix CSV: baseline/outputs/final_baseline_model/final_selected_baseline_confusion_matrix.csv
+Sensitivity/specificity CSV: baseline/outputs/final_baseline_model/final_selected_baseline_sensitivity_specificity.csv
+Assumptions text: baseline/outputs/final_baseline_model/final_model_assumption_checks.txt
 
-Selected baseline
---------------------------------------------------------------------------------------------
+Selected baseline:
 Candidate: Balanced - Pruned(14) (Production)
 Feature set: Pruned 14
-Balanced model meaning: class-weighted training (class_weight='balanced'), which increases penalty for errors on underrepresented classes.
-Accuracy: 0.259500
-Macro Recall: 0.254507
-Kappa: 0.008977
 
-Model performance metrics
---------------------------------------------------------------------------------------------
-Definitions:
-• Accuracy: proportion of all predictions that are correct.
-• Kappa: chance-corrected agreement between predictions and true labels.
-• Macro_Recall: mean of per-class recall values.
-• Log_Loss: probability error metric; lower is better and penalizes overconfident wrong predictions.
-• F1_Macro: mean of class-wise F1 (harmonic mean of precision and recall).
-• Recall_VeryLow/Low/Moderate/High: class-specific sensitivity TP/(TP+FN).
+Target bins:
+• Very Low (Q1): 0.000000 to 1.666667
+• Low (Q2): 1.666667 to 2.333333
+• Moderate (Q3): 2.333333 to 3.000000
+• High (Q4): 3.000000 to 5.000000
 
-Accuracy: 0.259500
-Kappa: 0.008977
-Macro_Recall: 0.254507
-Log_Loss: 1.390588
-F1_Macro: 0.252431
-Recall_VeryLow: 0.330033
-Recall_Low: 0.195652
-Recall_Moderate: 0.287554
-Recall_High: 0.204787
-
-Selected baseline confusion matrix and rates
---------------------------------------------------------------------------------------------
-Confusion matrix CSV: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_selected_baseline_confusion_matrix.csv
-Sensitivity/specificity CSV: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_selected_baseline_sensitivity_specificity.csv
-
-Definitions:
-• Sensitivity (Recall) = TP / (TP + FN): among true class members, fraction correctly identified.
-• Specificity = TN / (TN + FP): among non-members of the class, fraction correctly rejected.
-
-        Class  Sensitivity_Recall  Specificity  TP  FN  FP   TN
-Very Low (Q1)            0.330033     0.720947 200 406 389 1005
-     Low (Q2)            0.195652     0.816989 108 444 265 1183
-Moderate (Q3)            0.287554     0.666884 134 332 511 1023
-    High (Q4)            0.204787     0.805419  77 299 316 1308
-
-Model written out
---------------------------------------------------------------------------------------------
-Model equation text file: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_model_written_out.txt
-
-Model type and assumption checks
---------------------------------------------------------------------------------------------
-Model type: Balanced Multinomial Logistic Regression
-Assumption checks text file: /Users/edgarvidriales/Desktop/AuraCheck/auracheck/baseline/outputs/final_baseline_model/final_model_assumption_checks.txt
-
-                     Check                                       Result Status
-        Solver convergence                  n_iter_max=2, max_iter=5000   PASS
-   Multicollinearity (VIF)              max VIF=1.003 (threshold <= 10)   PASS
-All target classes present  counts={0: 3028, 1: 2760, 2: 2330, 3: 1882}   PASS
-      Probability validity All probabilities in [0,1] and rows sum to 1   PASS
-
-Baseline candidate comparison section removed from report by request.
-
-Regression tables included in report:
-• Balanced multinomial coefficient table
-• Companion MNLogit coefficient + p-value table
+                     Check                                      Result Status
+        Solver convergence                 n_iter_max=2, max_iter=5000   PASS
+   Multicollinearity (VIF)             max VIF=1.003 (threshold <= 10)   PASS
+All target classes present counts={0: 3028, 1: 2760, 2: 2330, 3: 1882}   PASS

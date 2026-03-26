@@ -10,6 +10,7 @@ What it does:
 
 import os
 import json
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import joblib
@@ -19,8 +20,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, cohen_kappa_score, recall_score
 
-ROOT = "/Users/edgarvidriales/Desktop/AuraCheck/auracheck"
-DATA_PATH = "/Users/edgarvidriales/Desktop/AuraCheck/auracheck/Dataset/students_mental_health_survey_with_burnout_final.csv"
+ROOT = str(Path(__file__).resolve().parents[2])
+DATA_PATH = os.path.join(ROOT, "Dataset", "students_mental_health_survey_with_burnout_final.csv")
 OUT_DIR = os.path.join(ROOT, "baseline", "outputs", "final_baseline_model")
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -28,6 +29,7 @@ MODEL_PATH = os.path.join(OUT_DIR, "production_pruned_multinomial_model.joblib")
 META_PATH = os.path.join(OUT_DIR, "production_pruned_multinomial_metadata.json")
 METRICS_PATH = os.path.join(OUT_DIR, "production_pruned_multinomial_metrics.csv")
 EXAMPLE_OUT = os.path.join(OUT_DIR, "production_pruned_multinomial_example_prediction.json")
+RESULTS_JSON = os.path.join(OUT_DIR, "production_pruned_multinomial_results.json")
 
 FEATURES_ALL = [
     "Course", "Age", "Gender", "CGPA", "Sleep_Quality", "Physical_Activity",
@@ -137,9 +139,9 @@ def train_and_save():
     with open(META_PATH, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
 
-    print(f"✓ Saved: {MODEL_PATH}")
-    print(f"✓ Saved: {META_PATH}")
-    print(f"✓ Saved: {METRICS_PATH}")
+    print(f"✓ Saved: {os.path.relpath(MODEL_PATH, ROOT)}")
+    print(f"✓ Saved: {os.path.relpath(META_PATH, ROOT)}")
+    print(f"✓ Saved: {os.path.relpath(METRICS_PATH, ROOT)}")
 
 
 def predict_student(student_answers: dict):
@@ -198,7 +200,12 @@ def main():
     with open(EXAMPLE_OUT, "w", encoding="utf-8") as f:
         json.dump({"input": example_student, "prediction": pred}, f, indent=2)
 
-    print(f"✓ Saved: {EXAMPLE_OUT}")
+    # Keep results JSON prediction-only, as requested.
+    with open(RESULTS_JSON, "w", encoding="utf-8") as f:
+        json.dump(pred, f, indent=2)
+
+    print(f"✓ Saved: {os.path.relpath(EXAMPLE_OUT, ROOT)}")
+    print(f"✓ Saved: {os.path.relpath(RESULTS_JSON, ROOT)}")
 
 
 if __name__ == "__main__":
