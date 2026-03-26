@@ -1,0 +1,37 @@
+Path: Dataset/students_mental_health_survey_with_burnout_final.csv
+Shape: (10000, 29)
+
+Numeric describe:
+                           count          mean       std        min        25%        50%        75%        max
+Age                      10000.0  2.301220e+01  3.862427  18.000000  20.000000  22.000000  25.000000  35.000000
+CGPA                      9988.0  3.492747e+00  0.286665   2.440000   3.290000   3.500000   3.700000   4.000000
+Stress_Level             10000.0  2.421300e+00  1.641120   0.000000   1.000000   2.000000   4.000000   5.000000
+Depression_Score         10000.0  2.274700e+00  1.622992   0.000000   1.000000   2.000000   3.000000   5.000000
+Anxiety_Score            10000.0  2.302100e+00  1.628896   0.000000   1.000000   2.000000   4.000000   5.000000
+Financial_Stress         10000.0  2.450200e+00  1.706930   0.000000   1.000000   2.000000   4.000000   5.000000
+Semester_Credit_Load     10000.0  2.198400e+01  4.364728  15.000000  18.000000  22.000000  26.000000  29.000000
+burnout_composite_score  10000.0  2.664535e-19  0.562060  -1.430148  -0.407725   0.000047   0.408562   1.635669
+burnout                  10000.0  2.001000e-01  0.400095   0.000000   0.000000   0.000000   0.000000   1.000000
+burnout_raw_score        10000.0  2.332700e+00  0.916640   0.000000   1.666667   2.333333   3.000000   5.000000
+method1_tertiles         10000.0  8.510000e-01  0.843843   0.000000   0.000000   1.000000   2.000000   2.000000
+method2_wider            10000.0  1.103600e+00  0.686232   0.000000   1.000000   1.000000   2.000000   2.000000
+method3_very_wide        10000.0  1.190900e+00  0.598242   0.000000   1.000000   1.000000   2.000000   2.000000
+method4_manual           10000.0  7.466000e-01  0.752094   0.000000   0.000000   1.000000   1.000000   2.000000
+method5_manual2          10000.0  9.992000e-01  0.614196   0.000000   1.000000   1.000000   1.000000   2.000000
+method6_kmeans           10000.0  9.898000e-01  0.771593   0.000000   0.000000   1.000000   2.000000   2.000000
+
+Categorical describe:
+                             count unique        top  freq
+Course                       10000      6    Medical  2998
+Gender                       10000      2       Male  5064
+Sleep_Quality                10000      3       Good  5157
+Physical_Activity            10000      3   Moderate  5001
+Diet_Quality                 10000      3    Average  6037
+Social_Support               10000      3   Moderate  4942
+Relationship_Status          10000      3     Single  5092
+Substance_Use                 9975      3      Never  8408
+Counseling_Service_Use       10000      3      Never  6074
+Family_History               10000      2         No  6919
+Chronic_Illness              10000      2         No  9493
+Extracurricular_Involvement  10000      3   Moderate  4878
+Residence_Type               10000      3  On-Campus  4004

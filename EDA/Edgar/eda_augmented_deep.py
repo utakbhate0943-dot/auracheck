@@ -3,6 +3,7 @@ In-depth EDA script for `students_mental_health_survey_augmented_10000.csv`.
 Generates saved outputs under `outputs/` including figures and cleaned CSV.
 """
 import os
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,14 +17,28 @@ sns.set(style='whitegrid')
 # Toggle generation of PCA outputs
 SKIP_PCA = True
 
-BASE = os.path.expanduser('~/Desktop/ML')
-AUG_PATH = os.path.join(BASE, 'students_mental_health_survey_augmented_10000.csv')
-OUT_DIR = os.path.join(BASE, 'outputs', 'augmented_deep')
+def find_repo_root(start=None):
+    p = Path(start or Path.cwd()).resolve()
+    for cand in [p, *p.parents]:
+        if (cand / "Dataset" / "students_mental_health_survey.csv").exists():
+            return cand
+    raise FileNotFoundError("Could not locate repository root containing Dataset/students_mental_health_survey.csv")
+
+
+ROOT = find_repo_root()
+aug_candidates = [
+    ROOT / 'Dataset' / 'students_mental_health_survey_augmented_10000_with_burnout.csv',
+    ROOT / 'Dataset' / 'students_mental_health_survey_augmented_10000.csv',
+    ROOT / 'Dataset' / 'students_mental_health_survey_with_burnout_final.csv',
+    ROOT / 'Dataset' / 'students_mental_health_survey.csv',
+]
+AUG_PATH = str(next((p for p in aug_candidates if p.exists()), aug_candidates[0]))
+OUT_DIR = os.path.join(str(ROOT), 'EDA', 'Edgar', 'outputs', 'augmented_deep')
 FIG_DIR = os.path.join(OUT_DIR, 'figures')
 os.makedirs(FIG_DIR, exist_ok=True)
 
 # Load
-print('Loading augmented dataset:', AUG_PATH)
+print('Loading dataset:', os.path.relpath(AUG_PATH, str(ROOT)))
 df = pd.read_csv(AUG_PATH, low_memory=False)
 print('Shape:', df.shape)
 
@@ -35,7 +50,7 @@ cat_desc = df.describe(include=['object']).T
 
 # Save small text summary
 with open(os.path.join(OUT_DIR, 'summary_text.txt'), 'w') as f:
-    f.write(f'Path: {AUG_PATH}\n')
+    f.write(f'Path: {os.path.relpath(AUG_PATH, str(ROOT))}\n')
     f.write(f'Shape: {df.shape}\n\n')
     f.write('Numeric describe:\n')
     f.write(num_desc.to_string())
@@ -208,7 +223,7 @@ cleaned = df.copy()
 # Example basic imputation for small missing CGPA: fill with median
 if 'CGPA' in cleaned.columns:
     cleaned['CGPA'] = pd.to_numeric(cleaned['CGPA'], errors='coerce')
-    cleaned['CGPA'].fillna(cleaned['CGPA'].median(), inplace=True)
+    cleaned['CGPA'] = cleaned['CGPA'].fillna(cleaned['CGPA'].median())
 
 cleaned_path = os.path.join(OUT_DIR, 'students_mental_health_survey_augmented_10000_cleaned.csv')
 cleaned.to_csv(cleaned_path, index=False)
@@ -219,4 +234,4 @@ out_stats = {'shape': df.shape, 'num_columns': len(num_cols), 'cat_columns': len
 with open(os.path.join(OUT_DIR, 'analysis_summary.json'), 'w') as f:
     json.dump(out_stats, f, indent=2, default=str)
 
-print('EDA complete. Outputs saved under:', OUT_DIR)
+print('EDA complete. Outputs saved under:', os.path.relpath(OUT_DIR, str(ROOT)))

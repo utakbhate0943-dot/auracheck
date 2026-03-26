@@ -1,0 +1,10 @@
+{
+  "predicted_class_index": 1,
+  "predicted_class": "Low (Q2)",
+  "probabilities": {
+    "Very Low (Q1)": 0.25215909196235603,
+    "Low (Q2)": 0.2846858662130879,
+    "Moderate (Q3)": 0.24095212366208807,
+    "High (Q4)": 0.22220291816246796
+  }
+}

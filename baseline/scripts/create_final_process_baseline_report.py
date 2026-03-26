@@ -10,6 +10,7 @@ Final report documenting:
 import os
 import json
 import textwrap
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import joblib
@@ -22,7 +23,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, f1_score, log_loss
 
-ROOT = "/Users/edgarvidriales/Desktop/AuraCheck/auracheck"
+ROOT = str(Path(__file__).resolve().parents[2])
 OUT_DIR = os.path.join(ROOT, "baseline", "outputs", "final_baseline_model")
 
 OUT_PDF = os.path.join(OUT_DIR, "final_process_baseline_comparison_report.pdf")
@@ -32,8 +33,9 @@ OUT_CM = os.path.join(OUT_DIR, "final_selected_baseline_confusion_matrix.csv")
 OUT_SENS_SPEC = os.path.join(OUT_DIR, "final_selected_baseline_sensitivity_specificity.csv")
 OUT_MODEL_WRITTEN = os.path.join(OUT_DIR, "final_model_written_out.txt")
 OUT_ASSUMPTIONS_TXT = os.path.join(OUT_DIR, "final_model_assumption_checks.txt")
+OUT_RESULTS_JSON = os.path.join(OUT_DIR, "production_pruned_multinomial_results.json")
 
-DATA_PATH = "/Users/edgarvidriales/Desktop/AuraCheck/auracheck/Dataset/students_mental_health_survey_with_burnout_final.csv"
+DATA_PATH = os.path.join(ROOT, "Dataset", "students_mental_health_survey_with_burnout_final.csv")
 CLASS_NAMES = ["Very Low (Q1)", "Low (Q2)", "Moderate (Q3)", "High (Q4)"]
 FEATURES_PRUNED = [
     "Course", "Gender", "Sleep_Quality", "Physical_Activity", "Diet_Quality",
@@ -483,6 +485,33 @@ def compute_additional_performance_metrics():
         return np.nan, np.nan
 
 
+def get_target_bin_splits():
+    """Get burnout quartile bin edges from metadata (preferred) or data fallback."""
+    meta_path = os.path.join(OUT_DIR, "production_pruned_multinomial_metadata.json")
+    try:
+        if os.path.exists(meta_path):
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            bins = meta.get("quartile_bins", [])
+            if isinstance(bins, list) and len(bins) >= 5:
+                return [float(x) for x in bins], "production metadata"
+    except Exception:
+        pass
+
+    try:
+        df = pd.read_csv(DATA_PATH)
+        _, bins = pd.qcut(
+            df["burnout_raw_score"].astype(float),
+            q=4,
+            labels=[0, 1, 2, 3],
+            duplicates="drop",
+            retbins=True,
+        )
+        return [float(x) for x in bins], "computed from dataset"
+    except Exception:
+        return [], "unavailable"
+
+
 def main():
     candidates = build_candidate_table()
     if len(candidates) == 0:
@@ -512,6 +541,7 @@ def main():
         }])
 
     ll, f1m = compute_additional_performance_metrics()
+    target_bins, target_bins_source = get_target_bin_splits()
     if "Log_Loss" not in perf_df.columns:
         perf_df["Log_Loss"] = ll
     if "F1_Macro" not in perf_df.columns:
@@ -854,10 +884,11 @@ def main():
             plt.close(fig)
 
     with open(OUT_TXT, "w", encoding="utf-8") as f:
+        rel = lambda p: os.path.relpath(p, ROOT)
         f.write("FINAL PROCESS + BASELINE COMPARISON REPORT SUMMARY\n")
         f.write("=" * 92 + "\n\n")
-        f.write(f"Report PDF: {OUT_PDF}\n")
-        f.write(f"Comparison table CSV: {OUT_CSV}\n\n")
+        f.write(f"Report PDF: {rel(OUT_PDF)}\n")
+        f.write(f"Comparison table CSV: {rel(OUT_CSV)}\n\n")
         f.write("Selected baseline\n")
         f.write("-" * 92 + "\n")
         f.write(f"Candidate: {selected_row['Candidate']}\n")
@@ -867,6 +898,16 @@ def main():
         f.write(f"Accuracy: {selected_row['Accuracy']:.6f}\n")
         f.write(f"Macro Recall: {selected_row['Macro_Recall']:.6f}\n")
         f.write(f"Kappa: {selected_row['Kappa']:.6f}\n\n")
+
+        f.write("Target bin split (burnout_raw_score quartiles)\n")
+        f.write("-" * 92 + "\n")
+        f.write(f"Source: {target_bins_source}\n")
+        if len(target_bins) >= 5:
+            labels = ["Very Low (Q1)", "Low (Q2)", "Moderate (Q3)", "High (Q4)"]
+            for i in range(4):
+                f.write(f"• {labels[i]}: {target_bins[i]:.6f} to {target_bins[i+1]:.6f}\n")
+            f.write("Raw bin edges: [" + ", ".join([f"{b:.6f}" for b in target_bins]) + "]\n")
+        f.write("\n")
 
         f.write("Model performance metrics\n")
         f.write("-" * 92 + "\n")
@@ -887,8 +928,8 @@ def main():
 
         f.write("Selected baseline confusion matrix and rates\n")
         f.write("-" * 92 + "\n")
-        f.write(f"Confusion matrix CSV: {OUT_CM}\n")
-        f.write(f"Sensitivity/specificity CSV: {OUT_SENS_SPEC}\n\n")
+        f.write(f"Confusion matrix CSV: {rel(OUT_CM)}\n")
+        f.write(f"Sensitivity/specificity CSV: {rel(OUT_SENS_SPEC)}\n\n")
         f.write("Definitions:\n")
         f.write("• Sensitivity (Recall) = TP / (TP + FN): among true class members, fraction correctly identified.\n")
         f.write("• Specificity = TN / (TN + FP): among non-members of the class, fraction correctly rejected.\n\n")
@@ -897,12 +938,12 @@ def main():
 
         f.write("Model written out\n")
         f.write("-" * 92 + "\n")
-        f.write(f"Model equation text file: {OUT_MODEL_WRITTEN}\n\n")
+        f.write(f"Model equation text file: {rel(OUT_MODEL_WRITTEN)}\n\n")
 
         f.write("Model type and assumption checks\n")
         f.write("-" * 92 + "\n")
         f.write(f"Model type: {model_type}\n")
-        f.write(f"Assumption checks text file: {OUT_ASSUMPTIONS_TXT}\n\n")
+        f.write(f"Assumption checks text file: {rel(OUT_ASSUMPTIONS_TXT)}\n\n")
         f.write(checks_df.to_string(index=False))
         f.write("\n\n")
 
@@ -914,11 +955,22 @@ def main():
         if walkthrough_json is not None:
             f.write("• Student prediction process page (encoding → z-scores → etas → softmax)\n")
 
-    print(f"✓ Saved: {OUT_PDF}")
-    print(f"✓ Saved: {OUT_TXT}")
-    print(f"✓ Saved: {OUT_CSV}")
-    print(f"✓ Saved: {OUT_CM}")
-    print(f"✓ Saved: {OUT_SENS_SPEC}")
+    # Keep results JSON prediction-only (example student) as requested.
+    if isinstance(ex_json, dict) and isinstance(ex_json.get("prediction"), dict):
+        results_payload = ex_json["prediction"]
+    elif isinstance(ex_json, dict):
+        results_payload = ex_json
+    else:
+        results_payload = {}
+    with open(OUT_RESULTS_JSON, "w", encoding="utf-8") as f:
+        json.dump(results_payload, f, indent=2)
+
+    print(f"✓ Saved: {os.path.relpath(OUT_PDF, ROOT)}")
+    print(f"✓ Saved: {os.path.relpath(OUT_TXT, ROOT)}")
+    print(f"✓ Saved: {os.path.relpath(OUT_CSV, ROOT)}")
+    print(f"✓ Saved: {os.path.relpath(OUT_CM, ROOT)}")
+    print(f"✓ Saved: {os.path.relpath(OUT_SENS_SPEC, ROOT)}")
+    print(f"✓ Saved: {os.path.relpath(OUT_RESULTS_JSON, ROOT)}")
 
 
 if __name__ == "__main__":

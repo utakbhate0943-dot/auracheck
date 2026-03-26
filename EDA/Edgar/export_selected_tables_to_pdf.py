@@ -5,15 +5,32 @@ into a paginated PDF suitable for review. Saves to `outputs/selected_tables.pdf`
 """
 import os
 import math
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-BASE = os.path.expanduser('~/Desktop/ML')
-ORIG = os.path.join(BASE, 'students_mental_health_survey_original.csv')
-AUG = os.path.join(BASE, 'students_mental_health_survey_augmented_10000.csv')
-OUT_DIR = os.path.join(BASE, 'outputs')
+def find_repo_root(start=None):
+    p = Path(start or Path.cwd()).resolve()
+    for cand in [p, *p.parents]:
+        if (cand / "Dataset" / "students_mental_health_survey.csv").exists():
+            return cand
+    raise FileNotFoundError("Could not locate repository root containing Dataset/students_mental_health_survey.csv")
+
+
+ROOT = find_repo_root()
+ORIG = os.path.join(str(ROOT), 'Dataset', 'students_mental_health_survey.csv')
+
+aug_candidates = [
+    ROOT / 'Dataset' / 'students_mental_health_survey_augmented_10000_with_burnout.csv',
+    ROOT / 'Dataset' / 'students_mental_health_survey_augmented_10000.csv',
+    ROOT / 'Dataset' / 'students_mental_health_survey_with_burnout_final.csv',
+    ROOT / 'Dataset' / 'students_mental_health_survey.csv',
+]
+AUG = str(next((p for p in aug_candidates if p.exists()), aug_candidates[0]))
+
+OUT_DIR = os.path.join(str(ROOT), 'EDA', 'Edgar', 'outputs')
 PDF_OUT = os.path.join(OUT_DIR, 'selected_tables.pdf')
 
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -121,7 +138,7 @@ def main():
         render_dataframe_pages(pdf, miss_orig, 'Original dataset: Missing values summary', rows_per_page=30)
         render_dataframe_pages(pdf, miss_aug, 'Augmented dataset: Missing values summary', rows_per_page=30)
 
-    print('Saved PDF to', PDF_OUT)
+    print('Saved PDF to', os.path.relpath(PDF_OUT, str(ROOT)))
 
 if __name__ == '__main__':
     main()
