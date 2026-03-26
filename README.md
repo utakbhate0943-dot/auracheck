@@ -1,87 +1,92 @@
 # AuraCheck
 
-AuraCheck is a Streamlit application for student mental wellness screening and daily progress tracking.
+AuraCheck is a student wellbeing check-in application built with Streamlit. It combines a guided questionnaire, lightweight stress scoring, daily progress tracking, and baseline model research artifacts in one repository.
 
-## What it does
+## Public Project Summary
 
-- Collects questionnaire inputs and predicts **Stress Level** using two supervised models:
-	- Logistic Regression
-	- Gradient Boosting
-- Estimates **Mental Health %** and visualizes results using gauge charts
-- Uses **KMeans clustering** to provide behavior-group remarks
-- Generates practical recommendations using **OpenAI**
-- Supports email magic-link login with **Supabase Auth**
-- Provides profile + daily tracker dashboard on Page 2
+This repository includes four main workstreams:
 
-## Quick start
+- Application: a Streamlit app for daily wellbeing check-ins and progress views.
+- Baseline modeling: scripts and outputs for a production baseline multinomial classifier.
+- EDA: exploratory analysis scripts and generated analysis artifacts.
+- Database: SQL scripts for local and Supabase-backed persistence options.
 
-### 1) Install dependencies
+## Key Features
 
-```bash
+- Guided multi-step wellbeing questionnaire.
+- Daily score outputs (stress and wellbeing indicators) with visual gauges.
+- Per-user daily history and trend charts.
+- Local SQLite persistence by default, with optional Supabase mirror sync.
+- Baseline model training and reproducible output artifacts.
+- EDA pipeline producing summary tables, diagnostics, and figures.
+
+## High-Level Architecture
+
+- Frontend and app logic: Streamlit in app.py.
+- Local persistence: SQLite database stored under Database/auracheck.db.
+- Optional remote sync: Supabase client upserts to users, profile, and daily_inputs tables.
+- AI recommendations: OpenAI client is supported when API key is configured.
+- Baseline model artifacts: saved under baseline/outputs/final_baseline_model.
+
+## Repository Highlights
+
+- app.py: main application flow, auth, questionnaire, charting, and persistence.
+- baseline/scripts/production_pruned_multinomial_baseline.py: baseline training and inference artifact generation.
+- baseline/scripts/create_final_process_baseline_report.py: candidate comparison and final report generation.
+- EDA/Edgar/eda_augmented_deep.py: deep EDA workflow and output generation.
+- Database/supabase_setup.sql: recommended Supabase schema and security policies.
+- Database/supabase_fix_for_app_sqlite_auth.sql: compatibility patch for app-managed auth mirroring.
+
+## Quick Start
+
+1. Create and activate a virtual environment.
+2. Install dependencies.
+3. Add environment variables.
+4. Run the Streamlit app.
+
+Example commands:
+
 pip install -r requirements.txt
-```
-
-### 2) Configure environment variables
-
-Create a `.env` file in the project root:
-
-```env
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=gpt-4.1-mini
-ADMIN_EMAIL=utakbhate0943@sdsu.com
-```
-
-### 3) Create Supabase tables
-
-Run this SQL in Supabase SQL Editor:
-
-```sql
-create table if not exists profiles (
-	user_id uuid primary key,
-	phone text,
-	full_name text,
-	age int,
-	gender text,
-	course text,
-	goals text,
-	created_at timestamp with time zone default now(),
-	updated_at timestamp with time zone default now()
-);
-
-create table if not exists daily_logs (
-	id bigint generated always as identity primary key,
-	user_id uuid,
-	log_date date default current_date,
-	predicted_stress_level int,
-	predicted_mental_health_pct numeric,
-	mood_score int,
-	sleep_hours numeric,
-	remark text,
-	recommendation text,
-	created_at timestamp with time zone default now()
-);
-
-create index if not exists daily_logs_user_id_idx on daily_logs(user_id);
-create index if not exists daily_logs_user_date_idx on daily_logs(user_id, log_date);
-```
-
-### 4) Run the app
-
-```bash
 streamlit run app.py
-```
 
-## App pages
+## Environment Variables
 
-- **Page 1 — Assessment + Chat**
-	- Questionnaire
-	- Stress / Mental Health analysis cards + gauges
-	- KMeans behavior remark
-	- OpenAI recommendations
-	- Signup/Login prompt
-- **Page 2 — Profile + Dashboard**
-	- Profile management
-	- Daily check-in
-	- Trend dashboard for stress, health %, mood, and sleep
+Create a local .env file at repository root.
+
+Required for app startup:
+
+- None for local-only mode.
+
+Optional:
+
+- OPENAI_API_KEY
+- OPENAI_MODEL (default: gpt-4.1-mini)
+- SUPABASE_URL
+- SUPABASE_ANON_KEY
+- SUPABASE_SERVICE_ROLE_KEY
+- ADMIN_EMAIL
+
+Security notes:
+
+- Do not commit .env.
+- Do not share keys or service-role secrets in docs, screenshots, or logs.
+
+## Database Modes
+
+- Local mode (default): uses SQLite only.
+- Hybrid mode: SQLite plus optional Supabase mirror sync.
+
+For Supabase schema setup, see Database/SUPABASE_SETUP_GUIDE.md and SQL files in Database/.
+
+## Baseline and EDA Artifacts
+
+- Baseline metrics and model metadata are generated in baseline/outputs/final_baseline_model.
+- EDA outputs (summary text, CSV diagnostics, figures) are generated in EDA/Edgar/outputs/augmented_deep.
+
+## Responsible Use
+
+AuraCheck is for educational and informational purposes. It is not a medical diagnosis tool and should not replace licensed clinical care.
+
+## Team Setup
+
+For internal setup, runbooks, and troubleshooting, see INTERNAL_SETUP.md.

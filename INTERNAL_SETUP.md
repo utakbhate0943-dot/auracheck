@@ -1,114 +1,164 @@
 # AuraCheck Internal Setup Guide
 
-This document is for the internal engineering team.
+This guide is for internal contributors and collaborators.
 
 ## 1) Prerequisites
 
 - Python 3.10+ (recommended: 3.11)
-- Access to Supabase project (URL + anon key)
-- OpenAI API key
 - Git access to this repository
+- Optional: Supabase project access
+- Optional: OpenAI API key
 
-## 2) Local environment setup
+## 2) Local Environment Setup
 
-```bash
+Use a virtual environment:
+
 python -m venv .venv
 .venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
-```
 
-## 3) Required environment variables
+## 3) Environment Variables
 
-Create `.env` at root:
+Create .env in project root.
 
-```env
-SUPABASE_URL=<supabase-url>
-SUPABASE_ANON_KEY=<supabase-anon-key>
-OPENAI_API_KEY=<openai-key>
-OPENAI_MODEL=gpt-4.1-mini
-```
+Minimum for local-only mode:
 
-## 4) Supabase schema (required)
+- No required variables.
 
-```sql
-create table if not exists profiles (
-  user_id uuid primary key,
-  phone text,
-  full_name text,
-  age int,
-  gender text,
-  course text,
-  goals text,
-  created_at timestamp with time zone default now(),
-  updated_at timestamp with time zone default now()
-);
+Optional variables:
 
-create table if not exists daily_logs (
-  id bigint generated always as identity primary key,
-  user_id uuid,
-  log_date date default current_date,
-  predicted_stress_level int,
-  predicted_mental_health_pct numeric,
-  mood_score int,
-  sleep_hours numeric,
-  remark text,
-  recommendation text,
-  created_at timestamp with time zone default now()
-);
+- OPENAI_API_KEY
+- OPENAI_MODEL=gpt-4.1-mini
+- SUPABASE_URL
+- SUPABASE_ANON_KEY
+- SUPABASE_SERVICE_ROLE_KEY
+- ADMIN_EMAIL
 
-create index if not exists daily_logs_user_id_idx on daily_logs(user_id);
-create index if not exists daily_logs_user_date_idx on daily_logs(user_id, log_date);
-```
+Security rules:
 
-Expected source table for model dataset sync:
+- Never commit .env.
+- Never share keys in docs, commits, chat, or screenshots.
 
-- `students_mental_health` (used by `training_module/fetch_supabase_data.py`)
+## 4) Runtime Modes
 
-## 5) Dataset column expectations
+AuraCheck currently runs SQLite-first and can mirror writes to Supabase.
 
-The model pipeline expects at minimum:
+- Local mode:
+  - Uses Database/auracheck.db created automatically.
+  - Works without Supabase credentials.
+- Hybrid mode:
+  - Writes locally first.
+  - Attempts Supabase upsert if configured.
+  - Local save is not blocked by Supabase DNS/network failures.
 
-- `Stress_Level` (required for supervised training)
+## 5) Database Setup (Supabase Optional)
 
-Common feature columns used in UI/model input:
+Recommended SQL sequence:
 
-- `Age`, `Gender`, `Course`, `CGPA`
-- `Sleep_Quality`, `Physical_Activity`, `Diet_Quality`
-- `Social_Support`, `Financial_Stress`
-- `Extracurricular_Involvement`, `Semester_Credit_Load`, `Residence_Type`
-- Optional numeric context: `Depression_Score`, `Anxiety_Score`
+1. Run Database/supabase_setup.sql for secure baseline schema and RLS.
+2. If using current app-managed SQLite auth mirror behavior, run Database/supabase_fix_for_app_sqlite_auth.sql.
 
-If columns are missing, training now fails early with explicit validation error messages.
+Notes:
 
-## 6) Run locally
+- Database/script.sql is legacy and keeps password hash/salt columns; use only if intentionally running that legacy model.
+- Preferred reference guide: Database/SUPABASE_SETUP_GUIDE.md.
 
-```bash
+## 6) Run Application
+
 streamlit run app.py
-```
 
-## 7) Troubleshooting
+Main behaviors to verify:
 
-- OpenAI 429/insufficient quota:
-  - Verify billing/plan, or rely on built-in fallback recommendations.
-- Supabase auth/link not working:
-  - Validate `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and allowed redirect URLs.
-- Model setup failed due to schema:
-  - Ensure `students_mental_health` table has required columns.
-- Empty dashboard on Page 2:
-  - Ensure user logged in and `daily_logs` rows exist for that user.
+- Questionnaire flow and scoring.
+- Daily submission save in SQLite.
+- Profile save and progress charts.
+- Admin view access only for configured admin email.
 
-## 8) Internal release checklist
+## 7) Baseline Model Scripts
 
-- [ ] `pip install -r requirements.txt` passes on clean venv
-- [ ] App launches (`streamlit run app.py`)
-- [ ] Page 1: prediction + gauges + recommendations render
-- [ ] Page 2: profile save + daily check-in + charts render
-- [ ] Supabase write/read path verified in staging
-- [ ] OpenAI fallback path tested (without API key or quota)
+Primary script:
 
-## 9) Ownership
+- baseline/scripts/production_pruned_multinomial_baseline.py
 
-- App/UI orchestration: `app.py`
-- Training pipelines: `training_module/*`
-- Data fetch from Supabase: `training_module/fetch_supabase_data.py`
+Purpose:
+
+- Trains balanced multinomial logistic baseline.
+- Saves model, metadata, metrics, and example prediction artifacts.
+
+Run:
+
+python baseline/scripts/production_pruned_multinomial_baseline.py
+
+Outputs:
+
+- baseline/outputs/final_baseline_model/production_pruned_multinomial_model.joblib
+- baseline/outputs/final_baseline_model/production_pruned_multinomial_metadata.json
+- baseline/outputs/final_baseline_model/production_pruned_multinomial_metrics.csv
+
+## 8) Baseline Comparison Report
+
+Script:
+
+- baseline/scripts/create_final_process_baseline_report.py
+
+Run:
+
+python baseline/scripts/create_final_process_baseline_report.py
+
+Outputs include:
+
+- final_process_baseline_comparison_report.pdf
+- final_process_baseline_comparison_report_summary.txt
+- confusion matrix and sensitivity/specificity CSV files
+
+## 9) EDA Workflow
+
+Primary EDA script:
+
+- EDA/Edgar/eda_augmented_deep.py
+
+Run:
+
+python EDA/Edgar/eda_augmented_deep.py
+
+Generated outputs:
+
+- EDA/Edgar/outputs/augmented_deep/analysis_summary.json
+- EDA/Edgar/outputs/augmented_deep/summary_text.txt
+- EDA/Edgar/outputs/augmented_deep/figures/*
+
+Optional table export script:
+
+- EDA/Edgar/export_selected_tables_to_pdf.py
+
+## 10) Troubleshooting
+
+- Supabase not syncing:
+  - Confirm SUPABASE_URL and key values.
+  - Verify project is reachable and DNS is resolving.
+  - Local SQLite saves should still succeed.
+- OpenAI unavailable or quota errors:
+  - Ensure OPENAI_API_KEY is valid.
+  - Verify fallback recommendation behavior in app.
+- Import errors in EDA or baseline scripts:
+  - Reinstall requirements in a clean environment.
+- Empty user progress section:
+  - Confirm user login and at least one successful daily submission.
+
+## 11) Internal Release Checklist
+
+- [ ] Fresh environment installs from requirements.txt successfully.
+- [ ] streamlit run app.py launches.
+- [ ] Local signup/login/profile flow works.
+- [ ] Daily input writes to SQLite and appears in progress charts.
+- [ ] Baseline scripts run and regenerate expected artifacts.
+- [ ] EDA script runs and generates output summaries/figures.
+- [ ] Supabase mirror path tested if credentials are configured.
+
+## 12) Code Ownership Map
+
+- App orchestration, UI, persistence: app.py
+- Baseline training and report generation: baseline/scripts/
+- SQL setup and schema hardening: Database/
+- Exploratory analytics: EDA/
