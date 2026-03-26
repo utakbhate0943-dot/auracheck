@@ -8,6 +8,7 @@ import hmac
 from datetime import date, datetime
 from typing import Dict, Any, Optional
 import pickle
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
@@ -21,7 +22,18 @@ from supabase import create_client
 load_dotenv(override=True)
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "utakbhate0943@sdsu.com").strip().lower()
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def normalize_supabase_url(url_value: str) -> str:
+    """Normalize Supabase URL so env variants do not break client setup."""
+    normalized = (url_value or "").strip().strip('"').strip("'").rstrip("/")
+    if normalized and not normalized.startswith(("http://", "https://")):
+        normalized = f"https://{normalized}"
+    return normalized
+
+
+SUPABASE_URL = normalize_supabase_url(os.getenv("SUPABASE_URL", ""))
 SUPABASE_KEY = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or "").strip()
 
 st.set_page_config(page_title="AuraCheck", page_icon="💜", layout="wide")
@@ -696,8 +708,9 @@ def get_field_options(field_name: str) -> list:
 
 def get_db_connection() -> sqlite3.Connection:
     """Get SQLite connection for AuraCheck app data."""
-    db_path = "Database/auracheck.db"
-    os.makedirs("Database", exist_ok=True)
+    db_dir = os.path.join(APP_DIR, "Database")
+    db_path = os.path.join(db_dir, "auracheck.db")
+    os.makedirs(db_dir, exist_ok=True)
     connection = sqlite3.connect(db_path)
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
@@ -708,48 +721,67 @@ def is_supabase_enabled() -> bool:
     return bool(SUPABASE_URL and SUPABASE_KEY)
 
 
+def is_dns_resolution_error(exception: Exception) -> bool:
+    """Return True when exception text indicates DNS hostname resolution failed."""
+    error_text = str(exception).lower()
+    patterns = [
+        "name or service not known",
+        "temporary failure in name resolution",
+        "nodename nor servname provided",
+        "failed to resolve",
+        "getaddrinfo failed",
+    ]
+    return any(pattern in error_text for pattern in patterns)
+
+
 @st.cache_resource
 def get_supabase_client():
     """Create and cache Supabase client."""
+    if st.session_state.get("supabase_sync_temporarily_disabled"):
+        return None
     if not is_supabase_enabled():
         return None
     try:
+        parsed = urlparse(SUPABASE_URL)
+        if not parsed.scheme or not parsed.netloc:
+            return None
         return create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception:
         return None
 
 
-def sync_user_to_supabase(user_payload: dict) -> None:
-    """Mirror user record to Supabase when configured."""
+def sync_payload_to_supabase(table_name: str, payload: dict, on_conflict: str) -> None:
+    """Sync payload to Supabase with graceful fallback to local-only mode."""
     client = get_supabase_client()
     if client is None:
         return
     try:
-        client.table("users").upsert(user_payload, on_conflict="user_id").execute()
+        client.table(table_name).upsert(payload, on_conflict=on_conflict).execute()
+        st.session_state["last_supabase_sync_error"] = None
     except Exception as exc:
-        st.session_state["last_supabase_sync_error"] = f"users sync failed: {exc}"
+        if is_dns_resolution_error(exc):
+            st.session_state["supabase_sync_temporarily_disabled"] = True
+            st.session_state["last_supabase_sync_error"] = (
+                "Supabase host could not be resolved. Local save succeeded; "
+                "remote sync paused for this session."
+            )
+            return
+        st.session_state["last_supabase_sync_error"] = f"{table_name} sync failed: {exc}"
+
+
+def sync_user_to_supabase(user_payload: dict) -> None:
+    """Mirror user record to Supabase when configured."""
+    sync_payload_to_supabase("users", user_payload, "user_id")
 
 
 def sync_profile_to_supabase(profile_payload: dict) -> None:
     """Mirror profile record to Supabase when configured."""
-    client = get_supabase_client()
-    if client is None:
-        return
-    try:
-        client.table("profile").upsert(profile_payload, on_conflict="user_id").execute()
-    except Exception as exc:
-        st.session_state["last_supabase_sync_error"] = f"profile sync failed: {exc}"
+    sync_payload_to_supabase("profile", profile_payload, "user_id")
 
 
 def sync_daily_input_to_supabase(daily_payload: dict) -> None:
     """Mirror daily input record to Supabase when configured."""
-    client = get_supabase_client()
-    if client is None:
-        return
-    try:
-        client.table("daily_inputs").upsert(daily_payload, on_conflict="user_id,input_date").execute()
-    except Exception as exc:
-        st.session_state["last_supabase_sync_error"] = f"daily_inputs sync failed: {exc}"
+    sync_payload_to_supabase("daily_inputs", daily_payload, "user_id,input_date")
 
 
 def init_database() -> None:
@@ -998,10 +1030,12 @@ def save_user_daily_input_to_sql(user_id: str, answers: dict, prediction: dict, 
                 "cluster": cluster,
             }
         )
+        st.session_state["last_local_sql_error"] = None
         return True, ""
     except sqlite3.IntegrityError:
         return False, "You have already submitted today's input. Please come back tomorrow."
-    except Exception:
+    except Exception as exc:
+        st.session_state["last_local_sql_error"] = f"daily_inputs local save failed: {exc}"
         return False, "Unable to save your daily input right now."
 
 
@@ -1344,7 +1378,9 @@ def initialize_state() -> None:
         "current_user_id": None,
         "current_user_email": None,
         "current_user_name": None,
+        "last_local_sql_error": None,
         "last_supabase_sync_error": None,
+        "supabase_sync_temporarily_disabled": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -1841,7 +1877,9 @@ def main():
                         prediction=prediction,
                         cluster=cluster,
                     )
-                    if not saved_to_sql:
+                    if saved_to_sql:
+                        st.success("✅ Daily input saved to local database.")
+                    else:
                         st.warning(f"⚠️ {save_message}")
                 else:
                     st.info("ℹ️ Log in to save daily inputs to your account history.")
@@ -1950,6 +1988,8 @@ def main():
                 st.rerun()
             st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
             st.markdown("<div class='auth-subtext'>Daily SQL history enabled</div>", unsafe_allow_html=True)
+            if st.session_state.get("last_local_sql_error"):
+                st.caption(f"Local SQL note: {st.session_state.get('last_local_sql_error')}")
             if st.session_state.get("last_supabase_sync_error"):
                 st.caption(f"Supabase sync note: {st.session_state.get('last_supabase_sync_error')}")
         else:
