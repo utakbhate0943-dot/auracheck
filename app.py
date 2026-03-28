@@ -1,3 +1,9 @@
+"""AuraCheck Streamlit application.
+
+This module intentionally keeps UI rendering, authentication, local persistence,
+and optional Supabase sync together to simplify project delivery.
+"""
+
 import os
 import json
 import sqlite3
@@ -6,11 +12,9 @@ import secrets
 import hashlib
 import hmac
 from datetime import date, datetime
-from typing import Dict, Any, Optional
-import pickle
+from typing import Optional
 from urllib.parse import urlparse
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -23,6 +27,37 @@ load_dotenv(override=True)
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "utakbhate0943@sdsu.com").strip().lower()
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_DIR = os.path.join(APP_DIR, "Database")
+DB_PATH = os.path.join(DB_DIR, "auracheck.db")
+USER_RESPONSES_JSON_PATH = os.path.join(APP_DIR, "Dataset", "user_responses.json")
+
+REQUIRED_FIELDS = [
+    "Age", "Course", "Gender", "CGPA", "Sleep_Quality",
+    "Physical_Activity", "Diet_Quality", "Social_Support",
+    "Relationship", "Substance_Use", "Counseling",
+    "Family_History", "Chronic_Illness", "Financial_Stress",
+    "Extracurricular", "Semester", "Residence_Type",
+]
+
+POSITIVE_THOUGHTS = [
+    "🌟 You are capable of overcoming challenges",
+    "💚 Your mental health matters and deserves attention",
+    "🌈 Every day is a fresh opportunity for growth",
+    "💫 You have strength within you",
+    "🌸 Self-care is not selfish, it's essential",
+    "⭐ Progress over perfection always",
+    "🎯 Your feelings are valid and important",
+    "🌊 Challenges help you grow stronger",
+    "💡 You deserve to be happy and healthy",
+    "🦋 Transformation starts with self-compassion",
+]
+
+# These fields are treated as stable baseline attributes after first response.
+STATIC_USER_FIELDS = {
+    "Age": "survey_age",
+    "Course": "survey_course",
+    "Gender": "survey_gender",
+}
 
 
 def normalize_supabase_url(url_value: str) -> str:
@@ -588,6 +623,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# =========================================
+# Prediction and questionnaire helper methods
+# =========================================
 def get_static_models():
     """Return static/mock model data for demonstration."""
     return {
@@ -706,12 +744,13 @@ def get_field_options(field_name: str) -> list:
     return options.get(field_name, [])
 
 
+# =============================================
+# Persistence layer (SQLite + optional Supabase)
+# =============================================
 def get_db_connection() -> sqlite3.Connection:
     """Get SQLite connection for AuraCheck app data."""
-    db_dir = os.path.join(APP_DIR, "Database")
-    db_path = os.path.join(db_dir, "auracheck.db")
-    os.makedirs(db_dir, exist_ok=True)
-    connection = sqlite3.connect(db_path)
+    os.makedirs(DB_DIR, exist_ok=True)
+    connection = sqlite3.connect(DB_PATH)
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
 
@@ -850,9 +889,20 @@ def init_database() -> None:
             );
             """
         )
+
+        # Backward-compatible migration for older local DBs.
+        cursor.execute("PRAGMA table_info(users)")
+        existing_user_columns = {row[1] for row in cursor.fetchall()}
+        for column_name in STATIC_USER_FIELDS.values():
+            if column_name not in existing_user_columns:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {column_name} TEXT")
+
         connection.commit()
 
 
+    # =====================================
+    # Authentication and profile data access
+    # =====================================
 def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
     """Hash password with PBKDF2-HMAC-SHA256 and a per-user salt."""
     salt_value = salt or secrets.token_hex(16)
@@ -994,6 +1044,51 @@ def upsert_profile(user_id: str, age: Optional[int], lifestyle_parameters: str, 
         return True
     except Exception:
         return False
+
+
+def get_user_static_answers(user_id: str) -> dict:
+    """Return saved baseline answers (age/course/gender) for a user, if present."""
+    with get_db_connection() as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT survey_age, survey_course, survey_gender
+            FROM users
+            WHERE user_id = ?
+            LIMIT 1
+            """,
+            (user_id,),
+        )
+        row = cursor.fetchone()
+
+    if not row:
+        return {}
+
+    return {
+        "Age": row[0],
+        "Course": row[1],
+        "Gender": row[2],
+    }
+
+
+def save_user_static_answer_if_missing(user_id: str, field_name: str, field_value: str) -> None:
+    """Persist first submitted baseline answer only once for the user."""
+    column_name = STATIC_USER_FIELDS.get(field_name)
+    value = (field_value or "").strip()
+    if not column_name or not value:
+        return
+
+    with get_db_connection() as connection:
+        connection.execute(
+            f"""
+            UPDATE users
+            SET {column_name} = COALESCE(NULLIF({column_name}, ''), ?),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+            """,
+            (value, user_id),
+        )
+        connection.commit()
 
 
 def save_user_daily_input_to_sql(user_id: str, answers: dict, prediction: dict, cluster: int) -> tuple[bool, str]:
@@ -1200,6 +1295,9 @@ def get_admin_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     return users_df, daily_df
 
 
+# ==============================
+# UI renderers and app navigation
+# ==============================
 def render_admin_page() -> None:
     """Render a simple admin page for users and daily trends."""
     st.markdown("<div class='content-placeholder'>", unsafe_allow_html=True)
@@ -1348,11 +1446,10 @@ def save_user_response_to_json(answers: dict, prediction: dict, cluster: int) ->
             "cluster": cluster
         }
         
-        json_file_path = "Dataset/user_responses.json"
         all_responses = []
         
-        if os.path.exists(json_file_path):
-            with open(json_file_path, 'r') as f:
+        if os.path.exists(USER_RESPONSES_JSON_PATH):
+            with open(USER_RESPONSES_JSON_PATH, 'r') as f:
                 try:
                     all_responses = json.load(f)
                 except:
@@ -1360,10 +1457,11 @@ def save_user_response_to_json(answers: dict, prediction: dict, cluster: int) ->
         
         all_responses.append(response_data)
         
-        with open(json_file_path, 'w') as f:
+        with open(USER_RESPONSES_JSON_PATH, 'w') as f:
             json.dump(all_responses, f, indent=2)
         
-    except Exception as e:
+    except Exception:
+        # JSON export is optional and should not block the UI flow.
         pass
 
 
@@ -1640,29 +1738,26 @@ def render_auth_page(auth_page: str) -> None:
         st.markdown("<h1 style='text-align: center;'>Profile</h1>", unsafe_allow_html=True)
         current_name = st.session_state.get("current_user_name") or "User"
         current_email = st.session_state.get("current_user_email") or ""
+        current_user_id = st.session_state.get("current_user_id")
         st.markdown(f"<h2 style='text-align: center;'>Welcome, {current_name}</h2>", unsafe_allow_html=True)
         if current_email:
             st.markdown(f"<p style='text-align: center;'>Logged in as {current_email}</p>", unsafe_allow_html=True)
 
-        with st.form("profile_form"):
-            age = st.number_input("Age", min_value=10, max_value=120, step=1)
-            lifestyle_parameters = st.text_area("Lifestyle Parameters", placeholder="Sleep habits, activity level, diet, etc.")
-            personal_details = st.text_area("Personal Details", placeholder="Anything else you'd like to share.")
-            save_profile_submit = st.form_submit_button("Save Profile", width="stretch")
+        saved_static_answers = get_user_static_answers(current_user_id) if current_user_id else {}
+        static_age = (saved_static_answers.get("Age") or "").strip()
+        static_course = (saved_static_answers.get("Course") or "").strip()
+        static_gender = (saved_static_answers.get("Gender") or "").strip()
 
-        if save_profile_submit:
-            saved = upsert_profile(
-                user_id=st.session_state.get("current_user_id"),
-                age=int(age) if age else None,
-                lifestyle_parameters=lifestyle_parameters,
-                personal_details=personal_details,
-            )
-            if saved:
-                reset_survey_state()
-                st.success("✅ Profile saved successfully.")
-                st.info("ℹ️ Survey has been reset. You can answer all questions again from the main page.")
-            else:
-                st.warning("⚠️ Unable to save profile right now.")
+        if static_age or static_course or static_gender:
+            st.markdown("#### Baseline Assessment Details")
+            st.caption("These values are reused automatically in future assessments.")
+            static_col_1, static_col_2, static_col_3 = st.columns(3)
+            with static_col_1:
+                st.text_input("Age", value=static_age or "Not set", disabled=True)
+            with static_col_2:
+                st.text_input("Course", value=static_course or "Not set", disabled=True)
+            with static_col_3:
+                st.text_input("Gender", value=static_gender or "Not set", disabled=True)
 
         if st.button("Continue to AuraCheck", key="profile_to_main", width="stretch"):
             st.session_state["auth_page"] = "main"
@@ -1681,8 +1776,8 @@ def render_auth_page(auth_page: str) -> None:
 
 def main():
     """Main Streamlit Application."""
-    
-    models = get_static_models()
+
+    # Initialize required runtime state before rendering any page sections.
     initialize_state()
     init_database()
 
@@ -1714,20 +1809,7 @@ def main():
         # Good Thoughts Section
         st.markdown("<div class='good-thoughts-header'>✨ Thought for the Day: </div>", unsafe_allow_html=True)
         
-        positive_thoughts = [
-            "🌟 You are capable of overcoming challenges",
-            "💚 Your mental health matters and deserves attention",
-            "🌈 Every day is a fresh opportunity for growth",
-            "💫 You have strength within you",
-            "🌸 Self-care is not selfish, it's essential",
-            "⭐ Progress over perfection always",
-            "🎯 Your feelings are valid and important",
-            "🌊 Challenges help you grow stronger",
-            "💡 You deserve to be happy and healthy",
-            "🦋 Transformation starts with self-compassion"
-        ]
-
-        thoughts_js = json.dumps(positive_thoughts)
+        thoughts_js = json.dumps(POSITIVE_THOUGHTS)
         components.html(
             f"""
             <div style="display:flex; justify-content:center; width:100%; margin-top: 6px;">
@@ -1784,17 +1866,23 @@ def main():
         st.markdown("<div class='middle-section'>", unsafe_allow_html=True)
         st.markdown("<div class='middle-panel'>", unsafe_allow_html=True)
         
-        required_fields = [
-            "Age", "Course", "Gender", "CGPA", "Sleep_Quality", 
-            "Physical_Activity", "Diet_Quality", "Social_Support", 
-            "Relationship", "Substance_Use", "Counseling", 
-            "Family_History", "Chronic_Illness", "Financial_Stress", 
-            "Extracurricular", "Semester", "Residence_Type"
-        ]
+        required_fields = REQUIRED_FIELDS
         
         current_question_idx = len(st.session_state.get("last_answers", {}))
-        answers = st.session_state.get("last_answers", {})
+        answers = dict(st.session_state.get("last_answers", {}))
         current_user_id = st.session_state.get("current_user_id")
+
+        # For logged-in users, preload baseline answers and skip re-asking them.
+        if current_user_id:
+            saved_static_answers = get_user_static_answers(current_user_id)
+            for field_name in STATIC_USER_FIELDS:
+                saved_value = (saved_static_answers.get(field_name) or "").strip()
+                if saved_value and not answers.get(field_name):
+                    answers[field_name] = saved_value
+            if answers != st.session_state.get("last_answers", {}):
+                st.session_state["last_answers"] = answers
+
+        current_question_idx = len(answers)
         already_submitted_today = bool(current_user_id and has_user_submitted_today(current_user_id))
 
         if already_submitted_today:
@@ -1823,6 +1911,11 @@ def main():
                         clean_value = ''.join(c for c in clean_value if ord(c) < 0x1F600 or ord(c) > 0x1F64F)
                         clean_value = clean_value.strip()
                         answers[current_field] = clean_value if clean_value else option
+
+                        # Save first baseline response permanently for logged-in users.
+                        if current_user_id and current_field in STATIC_USER_FIELDS:
+                            save_user_static_answer_if_missing(current_user_id, current_field, answers[current_field])
+
                         st.session_state["last_answers"] = answers
                         st.rerun()
             else:
