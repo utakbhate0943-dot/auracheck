@@ -4,6 +4,7 @@ This module intentionally keeps UI rendering, authentication, local persistence,
 and optional Supabase sync together to simplify project delivery.
 """
 
+
 import os
 import json
 import sqlite3
