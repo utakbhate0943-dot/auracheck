@@ -8,3 +8,4 @@ __pycache__/
 Dataset/user_responses.json
 Database/SUPABASE_SETUP_GUIDE.md
 .env
+env
