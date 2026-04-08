@@ -46,7 +46,7 @@ def fetch_students_mental_health() -> Optional[str]:
     **Environment Setup:**
         Set in .env file:
         SUPABASE_URL=https://your-project.supabase.co
-        SUPABASE_ANON_KEY=eyJhbGc...
+        SUPABASE_ANON_KEY=your_supabase_anon_key_here
     """
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_ANON_KEY")

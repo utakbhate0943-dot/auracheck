@@ -1,0 +1,205 @@
+[
+  {
+    "timestamp": "2026-03-25T15:15:29.752470",
+    "user_inputs": {
+      "Age": "27-30",
+      "Course": "Engineering",
+      "Gender": "\ud83e\uddd1\u200d\ud83e\udd1d\u200d\ud83e\uddd1 Other",
+      "CGPA": "3.0-3.5",
+      "Sleep_Quality": "Fair",
+      "Physical_Activity": "\ud83d\udfe0 Minimal",
+      "Diet_Quality": "\ud83d\udfe0 Fair",
+      "Social_Support": "\u26a0\ufe0f Weak",
+      "Relationship": "In a relationship",
+      "Substance_Use": "Occasionally",
+      "Counseling": "Previously",
+      "Family_History": "Yes - Anxiety",
+      "Chronic_Illness": "No",
+      "Financial_Stress": "\ud83d\udfe0 High",
+      "Extracurricular": "Somewhat involved",
+      "Semester": "2nd",
+      "Residence_Type": "Hostel"
+    },
+    "predictions": {
+      "stress_level": 3,
+      "mental_health_pct": 50.0,
+      "anxiety_score": 26.0,
+      "depression_score": 50.0
+    },
+    "cluster": 1
+  },
+  {
+    "timestamp": "2026-03-25T15:37:57.443852",
+    "user_inputs": {
+      "Age": "30+",
+      "Course": "Engineering",
+      "Gender": "\ud83e\uddd1\u200d\ud83e\udd1d\u200d\ud83e\uddd1 Other",
+      "CGPA": "2.0-2.5",
+      "Sleep_Quality": "Excellent",
+      "Physical_Activity": "\ud83d\udd34 None",
+      "Diet_Quality": "\ud83d\udfe0 Fair",
+      "Social_Support": "Moderate",
+      "Relationship": "Married",
+      "Substance_Use": "Occasionally",
+      "Counseling": "Open to it",
+      "Family_History": "Yes - Depression",
+      "Chronic_Illness": "Under investigation",
+      "Financial_Stress": "\ud83d\udfe0 High",
+      "Extracurricular": "Minimally involved",
+      "Semester": "3rd",
+      "Residence_Type": "Other"
+    },
+    "predictions": {
+      "stress_level": 3,
+      "mental_health_pct": 50.0,
+      "anxiety_score": 26.0,
+      "depression_score": 50.0
+    },
+    "cluster": 1
+  },
+  {
+    "timestamp": "2026-03-26T13:19:46.234839",
+    "user_inputs": {
+      "Age": "21-23",
+      "Course": "Engineering",
+      "Gender": "\ud83e\uddd1\u200d\ud83e\udd1d\u200d\ud83e\uddd1 Other",
+      "CGPA": "3.0-3.5",
+      "Sleep_Quality": "Very Good",
+      "Physical_Activity": "\ud83d\udfe1 Moderate",
+      "Diet_Quality": "\ud83d\udfe2 Very Good",
+      "Social_Support": "\u26a0\ufe0f Weak",
+      "Relationship": "Complicated",
+      "Substance_Use": "Regularly",
+      "Counseling": "Previously",
+      "Family_History": "No",
+      "Chronic_Illness": "No",
+      "Financial_Stress": "\ud83d\udfe0 High",
+      "Extracurricular": "Minimally involved",
+      "Semester": "3rd",
+      "Residence_Type": "Dorm"
+    },
+    "predictions": {
+      "stress_level": 3,
+      "mental_health_pct": 50.0,
+      "anxiety_score": 26.0,
+      "depression_score": 50.0
+    },
+    "cluster": 1
+  },
+  {
+    "timestamp": "2026-03-26T14:47:47.291560",
+    "user_inputs": {
+      "Age": "27-30",
+      "Course": "Business",
+      "Gender": "\ud83e\uddd1\u200d\ud83e\udd1d\u200d\ud83e\uddd1 Other",
+      "CGPA": "2.0-2.5",
+      "Sleep_Quality": "Very Good",
+      "Physical_Activity": "\ud83d\udfe1 Moderate",
+      "Diet_Quality": "\ud83d\udfe1 Good",
+      "Social_Support": "Moderate",
+      "Relationship": "Married",
+      "Substance_Use": "Regularly",
+      "Counseling": "Open to it",
+      "Family_History": "Yes - Other",
+      "Chronic_Illness": "Under investigation",
+      "Financial_Stress": "\ud83d\udfe1 Moderate",
+      "Extracurricular": "Minimally involved",
+      "Semester": "3rd",
+      "Residence_Type": "Apartment"
+    },
+    "predictions": {
+      "stress_level": 3,
+      "mental_health_pct": 50.0,
+      "anxiety_score": 26.0,
+      "depression_score": 50.0
+    },
+    "cluster": 1
+  },
+  {
+    "timestamp": "2026-03-26T14:50:28.685974",
+    "user_inputs": {
+      "Age": "24-26",
+      "Course": "Engineering",
+      "Gender": "\ud83d\udc69 Female",
+      "CGPA": "3.0-3.5",
+      "Sleep_Quality": "Fair",
+      "Physical_Activity": "\ud83d\udfe0 Minimal",
+      "Diet_Quality": "\ud83d\udfe0 Fair",
+      "Social_Support": "\u26a0\ufe0f Weak",
+      "Relationship": "In a relationship",
+      "Substance_Use": "Occasionally",
+      "Counseling": "Previously",
+      "Family_History": "Yes - Anxiety",
+      "Chronic_Illness": "No",
+      "Financial_Stress": "\ud83d\udfe0 High",
+      "Extracurricular": "Somewhat involved",
+      "Semester": "2nd",
+      "Residence_Type": "Hostel"
+    },
+    "predictions": {
+      "stress_level": 3,
+      "mental_health_pct": 50.0,
+      "anxiety_score": 26.0,
+      "depression_score": 50.0
+    },
+    "cluster": 1
+  },
+  {
+    "timestamp": "2026-03-27T19:25:59.599229",
+    "user_inputs": {
+      "Age": "30+",
+      "Course": "Business",
+      "Gender": "\ud83d\udc69 Female",
+      "CGPA": "2.5-3.0",
+      "Sleep_Quality": "Good",
+      "Physical_Activity": "\ud83d\udfe1 Moderate",
+      "Diet_Quality": "\ud83d\udfe1 Good",
+      "Social_Support": "Moderate",
+      "Relationship": "Married",
+      "Substance_Use": "Regularly",
+      "Counseling": "Open to it",
+      "Family_History": "Yes - Other",
+      "Chronic_Illness": "Under investigation",
+      "Financial_Stress": "\ud83d\udfe1 Moderate",
+      "Extracurricular": "Minimally involved",
+      "Semester": "3rd",
+      "Residence_Type": "Apartment"
+    },
+    "predictions": {
+      "stress_level": 3,
+      "mental_health_pct": 50.0,
+      "anxiety_score": 26.0,
+      "depression_score": 50.0
+    },
+    "cluster": 1
+  },
+  {
+    "timestamp": "2026-03-27T19:25:59.815683",
+    "user_inputs": {
+      "Age": "30+",
+      "Course": "Business",
+      "Gender": "\ud83d\udc69 Female",
+      "CGPA": "2.5-3.0",
+      "Sleep_Quality": "Good",
+      "Physical_Activity": "\ud83d\udfe1 Moderate",
+      "Diet_Quality": "\ud83d\udfe1 Good",
+      "Social_Support": "Moderate",
+      "Relationship": "Married",
+      "Substance_Use": "Regularly",
+      "Counseling": "Open to it",
+      "Family_History": "Yes - Other",
+      "Chronic_Illness": "Under investigation",
+      "Financial_Stress": "\ud83d\udfe1 Moderate",
+      "Extracurricular": "Minimally involved",
+      "Semester": "3rd",
+      "Residence_Type": "Apartment"
+    },
+    "predictions": {
+      "stress_level": 3,
+      "mental_health_pct": 50.0,
+      "anxiety_score": 26.0,
+      "depression_score": 50.0
+    },
+    "cluster": 1
+  }
+]
