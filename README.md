@@ -90,3 +90,23 @@ AuraCheck is for educational and informational purposes. It is not a medical dia
 ## Team Setup
 
 For internal setup, runbooks, and troubleshooting, see INTERNAL_SETUP.md.
+
+## Pre-Commit Secret Scanning
+
+This repository uses pre-commit hooks to block accidental secret commits.
+
+Setup once per clone:
+
+1. Install pre-commit:
+	pip install pre-commit
+2. Install hooks:
+	pre-commit install
+
+Optional manual scan of all tracked files:
+
+pre-commit run --all-files
+
+Notes:
+
+- .env remains ignored and is excluded from commit-time scanning because it is local-only.
+- Secret-like values in staged files will fail the commit until removed or replaced.
