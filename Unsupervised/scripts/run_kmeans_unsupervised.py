@@ -6,11 +6,10 @@ Goal:
 - Compare clusters against burnout quartile labels for interpretation.
 
 Outputs:
-- Unsupervised/outputs/kmeans/kmeans_clustered_students.csv
-- Unsupervised/outputs/kmeans/kmeans_cluster_profile_summary.csv
-- Unsupervised/outputs/kmeans/kmeans_cluster_profile_categorical.csv
-- Unsupervised/outputs/kmeans/kmeans_cluster_profile_categorical_strong_signals.csv
-- Unsupervised/outputs/kmeans/kmeans_results.json
+- Unsupervised/outputs/baseline_kmeans/kmeans_clustered_students.csv
+- Unsupervised/outputs/baseline_kmeans/kmeans_cluster_profile_summary.csv
+- Unsupervised/outputs/baseline_kmeans/kmeans_cluster_profile_categorical.csv
+- Unsupervised/outputs/baseline_kmeans/kmeans_results.json
 """
 
 from __future__ import annotations
@@ -59,16 +58,13 @@ def build_target(df: pd.DataFrame) -> pd.Series:
 def main() -> None:
     root = find_repo_root()
     data_path = root / "Dataset" / "students_mental_health_survey_with_burnout_final.csv"
-    out_dir = root / "Unsupervised" / "outputs" / "kmeans"
+    out_dir = root / "Unsupervised" / "outputs" / "baseline_kmeans"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     out_clustered = out_dir / "kmeans_clustered_students.csv"
     out_profiles = out_dir / "kmeans_cluster_profile_summary.csv"
     out_profiles_cat = out_dir / "kmeans_cluster_profile_categorical.csv"
-    out_profiles_cat_strong = out_dir / "kmeans_cluster_profile_categorical_strong_signals.csv"
     out_results = out_dir / "kmeans_results.json"
-    out_metric_notes = out_dir / "kmeans_metric_explanations.txt"
-    out_figure_notes = out_dir / "kmeans_figure_explanations.txt"
     fig_dir = out_dir / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
 
@@ -196,21 +192,6 @@ def main() -> None:
         cat_profile_df = cat_profile_df.sort_values(["cluster", "lift"], ascending=[True, False])
     cat_profile_df.to_csv(out_profiles_cat, index=False)
 
-    # Strong categorical signals = both meaningful prevalence and meaningful enrichment.
-    # These thresholds are conservative so output highlights only clearer cluster-specific categories.
-    if len(cat_profile_df):
-        cat_profile_strong = cat_profile_df[
-            (cat_profile_df["cluster_share"] >= 0.15)
-            & (cat_profile_df["lift"] >= 1.20)
-        ].copy()
-        cat_profile_strong = cat_profile_strong.sort_values(
-            ["cluster", "lift", "cluster_share"],
-            ascending=[True, False, False],
-        )
-    else:
-        cat_profile_strong = cat_profile_df.copy()
-    cat_profile_strong.to_csv(out_profiles_cat_strong, index=False)
-
     # --------------------------
     # Visuals for interpretation
     # --------------------------
@@ -290,12 +271,6 @@ def main() -> None:
         "normalized_mutual_info": "How much information clusters share with true burnout quartiles. Range is 0 to 1; higher is better.",
     }
 
-    with open(out_metric_notes, "w", encoding="utf-8") as f:
-        f.write("K-MEANS METRIC EXPLANATIONS\n")
-        f.write("=" * 80 + "\n\n")
-        for key, text in metric_explanations.items():
-            f.write(f"- {key}: {text}\n")
-
     # Human-readable descriptions for each saved figure.
     figure_explanations = {
         "cluster_sizes.png": "Bar chart of number of students per cluster; useful to spot highly imbalanced clusters.",
@@ -304,11 +279,6 @@ def main() -> None:
         "pca_true_burnout.png": "Same PCA projection colored by true burnout quartiles; compare against cluster-colored view to assess alignment.",
         "elbow_plot.png": "Inertia vs k curve for k=2..10; look for an elbow where adding more clusters yields diminishing returns.",
     }
-    with open(out_figure_notes, "w", encoding="utf-8") as f:
-        f.write("K-MEANS FIGURE EXPLANATIONS\n")
-        f.write("=" * 80 + "\n\n")
-        for key, text in figure_explanations.items():
-            f.write(f"- {key}: {text}\n")
 
     payload = {
         "dataset": os.path.relpath(data_path, root),
@@ -337,10 +307,7 @@ def main() -> None:
             "clustered_students_csv": os.path.relpath(out_clustered, root),
             "cluster_profile_summary_csv": os.path.relpath(out_profiles, root),
             "cluster_profile_categorical_csv": os.path.relpath(out_profiles_cat, root),
-            "cluster_profile_categorical_strong_signals_csv": os.path.relpath(out_profiles_cat_strong, root),
             "results_json": os.path.relpath(out_results, root),
-            "metric_explanations_txt": os.path.relpath(out_metric_notes, root),
-            "figure_explanations_txt": os.path.relpath(out_figure_notes, root),
             "figures": {
                 "cluster_sizes": os.path.relpath(fig_cluster_sizes, root),
                 "cluster_vs_burnout_heatmap": os.path.relpath(fig_cluster_vs_burnout, root),
@@ -357,9 +324,6 @@ def main() -> None:
     print("Saved:", os.path.relpath(out_clustered, root))
     print("Saved:", os.path.relpath(out_profiles, root))
     print("Saved:", os.path.relpath(out_profiles_cat, root))
-    print("Saved:", os.path.relpath(out_profiles_cat_strong, root))
-    print("Saved:", os.path.relpath(out_metric_notes, root))
-    print("Saved:", os.path.relpath(out_figure_notes, root))
     print("Saved figures dir:", os.path.relpath(fig_dir, root))
     print("Saved:", os.path.relpath(out_results, root))
 

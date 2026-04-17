@@ -22,21 +22,18 @@ For the current report and comparison tables, the focus is on KMeans-based varia
 - `notebooks/kmeans_burnout_unsupervised.ipynb` — notebook workflow
 - `scripts/run_kmeans_unsupervised.py` — baseline K-Means script
 - `scripts/run_unsupervised_experiments.py` — expanded experiment runner
-- `outputs/kmeans/` — baseline K-Means outputs
-- `outputs/experiments/` — comparative experiment outputs
+- `outputs/baseline_kmeans/` — baseline K-Means outputs
+- `outputs/kmeans_benchmark/` — comparative K-Means-variant outputs
 
 ## Outputs
 - Baseline K-Means artifacts:
 	- `kmeans_clustered_students.csv`
 	- `kmeans_cluster_profile_summary.csv`
 	- `kmeans_cluster_profile_categorical.csv`
-	- `kmeans_cluster_profile_categorical_strong_signals.csv`
 	- `kmeans_results.json`
 - Comparative experiment artifacts:
 	- `unsupervised_experiments_results.csv`
 	- `unsupervised_experiments_results.json`
-	- `unsupervised_metric_explanations.txt`
-	- `unsupervised_figure_explanations.txt`
 	- `kmeans_unsupervised_findings_report.pdf`
 	- `figures/*.png`
 

@@ -2,10 +2,10 @@
 Export a PDF report comparing top unsupervised models and metric definitions.
 
 Input:
-- Unsupervised/outputs/experiments/unsupervised_experiments_results.csv
+- Unsupervised/outputs/kmeans_benchmark/unsupervised_experiments_results.csv
 
 Output:
-- Unsupervised/outputs/experiments/kmeans_unsupervised_findings_report.pdf
+- Unsupervised/outputs/kmeans_benchmark/kmeans_unsupervised_findings_report.pdf
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def find_repo_root(start: Path | None = None) -> Path:
     """Find project root by locating the experiment CSV output."""
     p = (start or Path.cwd()).resolve()
     for cand in [p, *p.parents]:
-        if (cand / "Unsupervised" / "outputs" / "experiments" / "unsupervised_experiments_results.csv").exists():
+        if (cand / "Unsupervised" / "outputs" / "kmeans_benchmark" / "unsupervised_experiments_results.csv").exists():
             return cand
     raise FileNotFoundError("Could not find repository root with Unsupervised outputs.")
 
@@ -220,15 +220,15 @@ def load_json(path: Path) -> dict:
 
 def main() -> None:
     root = find_repo_root()
-    in_csv = root / "Unsupervised" / "outputs" / "experiments" / "unsupervised_experiments_results.csv"
-    experiments_json_path = root / "Unsupervised" / "outputs" / "experiments" / "unsupervised_experiments_results.json"
-    kmeans_json_path = root / "Unsupervised" / "outputs" / "kmeans" / "kmeans_results.json"
-    kmeans_profile_path = root / "Unsupervised" / "outputs" / "kmeans" / "kmeans_cluster_profile_summary.csv"
-    kmeans_profile_cat_path = root / "Unsupervised" / "outputs" / "kmeans" / "kmeans_cluster_profile_categorical.csv"
+    in_csv = root / "Unsupervised" / "outputs" / "kmeans_benchmark" / "unsupervised_experiments_results.csv"
+    experiments_json_path = root / "Unsupervised" / "outputs" / "kmeans_benchmark" / "unsupervised_experiments_results.json"
+    kmeans_json_path = root / "Unsupervised" / "outputs" / "baseline_kmeans" / "kmeans_results.json"
+    kmeans_profile_path = root / "Unsupervised" / "outputs" / "baseline_kmeans" / "kmeans_cluster_profile_summary.csv"
+    kmeans_profile_cat_path = root / "Unsupervised" / "outputs" / "baseline_kmeans" / "kmeans_cluster_profile_categorical.csv"
     kmeans_profile_cat_strong_path = (
-        root / "Unsupervised" / "outputs" / "kmeans" / "kmeans_cluster_profile_categorical_strong_signals.csv"
+        root / "Unsupervised" / "outputs" / "baseline_kmeans" / "kmeans_cluster_profile_categorical_strong_signals.csv"
     )
-    out_pdf = root / "Unsupervised" / "outputs" / "experiments" / "kmeans_unsupervised_findings_report.pdf"
+    out_pdf = root / "Unsupervised" / "outputs" / "kmeans_benchmark" / "kmeans_unsupervised_findings_report.pdf"
 
     # Load full experiment output and keep KMeans-only families for this report.
     df = pd.read_csv(in_csv)
@@ -573,7 +573,7 @@ def main() -> None:
 
     figure_pages: list[tuple[str, Path, str]] = []
 
-    exp_fig_dir = root / "Unsupervised" / "outputs" / "experiments" / "figures"
+    exp_fig_dir = root / "Unsupervised" / "outputs" / "kmeans_benchmark" / "figures"
     for fname, text in (experiments_payload.get("figure_explanations") or {}).items():
         figure_pages.append((f"Experiments Figure: {fname}", exp_fig_dir / fname, str(text)))
 

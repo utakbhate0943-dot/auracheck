@@ -7,10 +7,9 @@ Covers:
 3) Dimensionality reduction variants (PCA) + KMeans
 4) Stability checks for KMeans k-sweep variants
 
-Outputs under Unsupervised/outputs/experiments:
+Outputs under Unsupervised/outputs/kmeans_benchmark:
 - unsupervised_experiments_results.csv
 - unsupervised_experiments_results.json
-- unsupervised_metric_explanations.txt
 - figures/*.png
 """
 
@@ -179,15 +178,13 @@ def main() -> None:
     root = find_repo_root()
     data_path = root / "Dataset" / "students_mental_health_survey_with_burnout_final.csv"
 
-    out_dir = root / "Unsupervised" / "outputs" / "experiments"
+    out_dir = root / "Unsupervised" / "outputs" / "kmeans_benchmark"
     fig_dir = out_dir / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
     fig_dir.mkdir(parents=True, exist_ok=True)
 
     out_csv = out_dir / "unsupervised_experiments_results.csv"
     out_json = out_dir / "unsupervised_experiments_results.json"
-    out_metric_notes = out_dir / "unsupervised_metric_explanations.txt"
-    out_figure_notes = out_dir / "unsupervised_figure_explanations.txt"
 
     df = pd.read_csv(data_path)
     y_true = build_target(df)
@@ -416,22 +413,11 @@ def main() -> None:
         "stability_index": "Average pairwise ARI across repeated runs/seeds of the same setup (higher means more reproducible clusters).",
         "noise_ratio": "Penalty column for consistency; lower is better when present.",
     }
-    with open(out_metric_notes, "w", encoding="utf-8") as f:
-        f.write("UNSUPERVISED METRIC EXPLANATIONS\n")
-        f.write("=" * 80 + "\n\n")
-        for k, v in metric_explanations.items():
-            f.write(f"- {k}: {v}\n")
-
     figure_explanations = {
         "kmeans_k_sweep_metrics.png": "Line chart across k=2..10 showing NMI, ARI, and Silhouette for the KMeans k-sweep family.",
         "top_variants_by_nmi.png": "Bar chart of top model variants ranked by NMI; compares alignment with burnout quartiles.",
         "best_kmeans_cluster_vs_burnout.png": "Heatmap of discovered clusters vs true burnout quartiles for the best kmeans_k_sweep run.",
     }
-    with open(out_figure_notes, "w", encoding="utf-8") as f:
-        f.write("UNSUPERVISED FIGURE EXPLANATIONS\n")
-        f.write("=" * 80 + "\n\n")
-        for k, v in figure_explanations.items():
-            f.write(f"- {k}: {v}\n")
 
     # JSON summary bundles top rows + metadata for lightweight downstream consumers.
     summary = {
@@ -446,8 +432,6 @@ def main() -> None:
         "outputs": {
             "results_csv": os.path.relpath(out_csv, root),
             "results_json": os.path.relpath(out_json, root),
-            "metric_explanations_txt": os.path.relpath(out_metric_notes, root),
-            "figure_explanations_txt": os.path.relpath(out_figure_notes, root),
             "figures_dir": os.path.relpath(fig_dir, root),
         },
     }
@@ -457,8 +441,6 @@ def main() -> None:
 
     print("Saved:", os.path.relpath(out_csv, root))
     print("Saved:", os.path.relpath(out_json, root))
-    print("Saved:", os.path.relpath(out_metric_notes, root))
-    print("Saved:", os.path.relpath(out_figure_notes, root))
     print("Saved figures dir:", os.path.relpath(fig_dir, root))
 
 
