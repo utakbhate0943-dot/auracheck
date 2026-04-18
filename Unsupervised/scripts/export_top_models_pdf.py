@@ -225,9 +225,6 @@ def main() -> None:
     kmeans_json_path = root / "Unsupervised" / "outputs" / "baseline_kmeans" / "kmeans_results.json"
     kmeans_profile_path = root / "Unsupervised" / "outputs" / "baseline_kmeans" / "kmeans_cluster_profile_summary.csv"
     kmeans_profile_cat_path = root / "Unsupervised" / "outputs" / "baseline_kmeans" / "kmeans_cluster_profile_categorical.csv"
-    kmeans_profile_cat_strong_path = (
-        root / "Unsupervised" / "outputs" / "baseline_kmeans" / "kmeans_cluster_profile_categorical_strong_signals.csv"
-    )
     out_pdf = root / "Unsupervised" / "outputs" / "kmeans_benchmark" / "kmeans_unsupervised_findings_report.pdf"
 
     # Load full experiment output and keep KMeans-only families for this report.
@@ -452,19 +449,9 @@ def main() -> None:
         cat_prof = pd.read_csv(kmeans_profile_cat_path)
         cluster_interp_lines.extend(["", "Categorical-feature findings:"])
 
-        if kmeans_profile_cat_strong_path.exists():
-            cat_strong = pd.read_csv(kmeans_profile_cat_strong_path)
-            if len(cat_strong) == 0:
-                cluster_interp_lines.append(
-                    "- No strong categorical signals met thresholds (cluster_share >= 0.15 and lift >= 1.20)."
-                )
-                cluster_interp_lines.append(
-                    "- Interpretation: categories vary by cluster only modestly; numeric features are the main differentiators."
-                )
-            else:
-                cluster_interp_lines.append(
-                    f"- Strong categorical signals found: {len(cat_strong)} rows above threshold."
-                )
+        cluster_interp_lines.append(
+            "- Categorical differences are summarized by top category and lift per cluster-feature pair."
+        )
 
         # Add compact examples from top-lift rows for interpretability.
         if len(cat_prof):
