@@ -39,10 +39,15 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 def find_repo_root(start: Path | None = None) -> Path:
     """Walk upward from the current folder to find the project root."""
-    p = (start or Path.cwd()).resolve()
-    for cand in [p, *p.parents]:
-        if (cand / "Dataset" / "students_mental_health_survey_with_burnout_final.csv").exists():
-            return cand
+    start_points = [(start or Path.cwd()).resolve(), Path(__file__).resolve()]
+    seen: set[Path] = set()
+    for base in start_points:
+        for cand in [base, *base.parents]:
+            if cand in seen:
+                continue
+            seen.add(cand)
+            if (cand / "Dataset" / "students_mental_health_survey_with_burnout_final.csv").exists():
+                return cand
     raise FileNotFoundError(
         "Could not locate repository root containing Dataset/students_mental_health_survey_with_burnout_final.csv"
     )
@@ -128,15 +133,6 @@ def add_result(results: list[dict[str, Any]], base: dict[str, Any], metrics: dic
     results.append(row)
 
 
-def safe_zscore(values: pd.Series) -> pd.Series:
-    """Compute a robust z-score and return zeros when variance is missing/zero."""
-    s = pd.to_numeric(values, errors="coerce")
-    std = s.std(ddof=0)
-    if pd.isna(std) or std == 0:
-        return pd.Series(np.zeros(len(s)), index=s.index)
-    return (s - s.mean()) / std
-
-
 def json_safe(value: Any) -> Any:
     """Recursively convert NaN/Inf values into JSON-safe nulls."""
     if isinstance(value, dict):
@@ -209,7 +205,7 @@ def main() -> None:
     X_all = df[feature_cols_all].copy()
 
     # Global preprocessing baseline used by most experiment families.
-    X_full_proc, num_cols_full, cat_cols_full = preprocess_frame(X_all)
+    X_full_proc, _, _ = preprocess_frame(X_all)
 
     results: list[dict[str, Any]] = []
 

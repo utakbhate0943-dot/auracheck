@@ -27,15 +27,15 @@ For the current report and comparison tables, the focus is on KMeans-based varia
 
 ## Outputs
 - Baseline K-Means artifacts:
-	- `kmeans_clustered_students.csv`
-	- `kmeans_cluster_profile_summary.csv`
-	- `kmeans_cluster_profile_categorical.csv`
-	- `kmeans_results.json`
+  - `kmeans_clustered_students.csv`
+  - `kmeans_cluster_profile_summary.csv`
+  - `kmeans_cluster_profile_categorical.csv`
+  - `kmeans_results.json`
 - Comparative experiment artifacts:
-	- `unsupervised_experiments_results.csv`
-	- `unsupervised_experiments_results.json`
-	- `kmeans_unsupervised_findings_report.pdf`
-	- `figures/*.png`
+  - `unsupervised_experiments_results.csv`
+  - `unsupervised_experiments_results.json`
+  - `kmeans_unsupervised_findings_report.pdf`
+  - `figures/*.png`
 
 ## How to read the results
 

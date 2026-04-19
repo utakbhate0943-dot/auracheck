@@ -27,10 +27,15 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 def find_repo_root(start: Path | None = None) -> Path:
     """Find project root by locating the experiment CSV output."""
-    p = (start or Path.cwd()).resolve()
-    for cand in [p, *p.parents]:
-        if (cand / "Unsupervised" / "outputs" / "kmeans_benchmark" / "unsupervised_experiments_results.csv").exists():
-            return cand
+    start_points = [(start or Path.cwd()).resolve(), Path(__file__).resolve()]
+    seen: set[Path] = set()
+    for base in start_points:
+        for cand in [base, *base.parents]:
+            if cand in seen:
+                continue
+            seen.add(cand)
+            if (cand / "Unsupervised" / "outputs" / "kmeans_benchmark" / "unsupervised_experiments_results.csv").exists():
+                return cand
     raise FileNotFoundError("Could not find repository root with Unsupervised outputs.")
 
 
@@ -269,32 +274,31 @@ def main() -> None:
     ]:
         top_display[col] = top_display[col].map(lambda x: fmt(x, 4))
 
-    # Shared metric definitions used in report text/table notes.
-    metric_lines = [
-        "Metric meanings:",
-        "- silhouette: cluster separation (higher better)",
-        "- davies_bouldin: cluster overlap (lower better)",
-        "- calinski_harabasz (CH): compactness vs separation (higher better)",
-        "- adjusted_rand_index (ARI): alignment to burnout quartiles, chance-adjusted (higher better)",
-        "- normalized_mutual_info (NMI): shared information with burnout quartiles (higher better)",
-        "- stability_index: repeatability across random seeds (higher better)",
-        "",
-        "Interpretation note:",
-        "Compare individual metrics across variants to find the best trade-off for your use case.",
-    ]
-
     # High-level report summary (first page).
     summary_lines = [
         f"Input file: {os.path.relpath(in_csv, root)}",
         f"Rows (model variants): {len(df)}",
         f"Families represented in report: {len(family_top)}",
-        f"Included families: {', '.join(selected_families)}",
+        f"Included families: {', '.join(selected_families) if selected_families else 'N/A'}",
         "",
         "Top family by silhouette score:",
-        f"- family: {family_top.iloc[0]['family']}",
-        f"- variant: {family_top.iloc[0]['variant']}",
-        f"- silhouette: {fmt(family_top.iloc[0]['silhouette'], 4)}",
     ]
+    if family_top.empty:
+        summary_lines.extend(
+            [
+                "- family: N/A",
+                "- variant: N/A",
+                "- silhouette: N/A",
+            ]
+        )
+    else:
+        summary_lines.extend(
+            [
+                f"- family: {family_top.iloc[0]['family']}",
+                f"- variant: {family_top.iloc[0]['variant']}",
+                f"- silhouette: {fmt(family_top.iloc[0]['silhouette'], 4)}",
+            ]
+        )
 
     # Notes intentionally appear on the same page as the table.
     table_metric_notes = [

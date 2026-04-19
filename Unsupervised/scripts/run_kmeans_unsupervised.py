@@ -37,10 +37,15 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 
 def find_repo_root(start: Path | None = None) -> Path:
-    p = (start or Path.cwd()).resolve()
-    for cand in [p, *p.parents]:
-        if (cand / "Dataset" / "students_mental_health_survey_with_burnout_final.csv").exists():
-            return cand
+    start_points = [(start or Path.cwd()).resolve(), Path(__file__).resolve()]
+    seen: set[Path] = set()
+    for base in start_points:
+        for cand in [base, *base.parents]:
+            if cand in seen:
+                continue
+            seen.add(cand)
+            if (cand / "Dataset" / "students_mental_health_survey_with_burnout_final.csv").exists():
+                return cand
     raise FileNotFoundError(
         "Could not locate repository root containing Dataset/students_mental_health_survey_with_burnout_final.csv"
     )

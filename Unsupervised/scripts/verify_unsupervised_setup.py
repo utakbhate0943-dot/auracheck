@@ -7,7 +7,6 @@ Run from repository root:
 from __future__ import annotations
 
 import importlib
-import sys
 
 REQUIRED = [
     "pandas",
