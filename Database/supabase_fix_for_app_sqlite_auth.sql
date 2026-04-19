@@ -38,3 +38,11 @@ with check (true);
 -- 5) Ensure profile/daily_inputs constraints expected by app.
 create unique index if not exists profile_user_id_uidx on public.profile (user_id);
 create unique index if not exists daily_inputs_user_date_uidx on public.daily_inputs (user_id, input_date);
+
+-- 6) Align the cluster constraint with the 4-cluster KMeans model.
+alter table if exists public.daily_inputs
+  drop constraint if exists daily_inputs_cluster_check;
+
+alter table if exists public.daily_inputs
+  add constraint daily_inputs_cluster_check
+  check (cluster is null or cluster between 0 and 3);

@@ -63,7 +63,7 @@ create table if not exists public.daily_inputs (
   submitted_at timestamptz not null default now(),
   answers_json jsonb not null,
   prediction_json jsonb not null,
-  cluster int null check (cluster is null or cluster between 0 and 2),
+  cluster int null check (cluster is null or cluster between 0 and 3),
   created_at timestamptz not null default now(),
   check (jsonb_typeof(answers_json) = 'object'),
   check (jsonb_typeof(prediction_json) = 'object'),
