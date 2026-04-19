@@ -162,6 +162,13 @@ for insert
 to authenticated
 with check (auth.uid() = user_id);
 
+drop policy if exists users_insert_anon on public.users;
+create policy users_insert_anon
+on public.users
+for insert
+to anon
+with check (true);
+
 drop policy if exists users_update_own on public.users;
 create policy users_update_own
 on public.users

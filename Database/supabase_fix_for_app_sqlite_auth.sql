@@ -27,6 +27,14 @@ alter table if exists public.users
 create unique index if not exists users_user_id_uidx on public.users (user_id);
 create unique index if not exists users_email_uidx on public.users (email);
 
--- 4) Ensure profile/daily_inputs constraints expected by app.
+-- 4) Allow anonymous signup inserts for the current app flow.
+drop policy if exists users_insert_anon on public.users;
+create policy users_insert_anon
+on public.users
+for insert
+to anon
+with check (true);
+
+-- 5) Ensure profile/daily_inputs constraints expected by app.
 create unique index if not exists profile_user_id_uidx on public.profile (user_id);
 create unique index if not exists daily_inputs_user_date_uidx on public.daily_inputs (user_id, input_date);
