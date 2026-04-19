@@ -34,6 +34,7 @@ This repository includes four main workstreams:
 - baseline/scripts/production_pruned_multinomial_baseline.py: baseline training and inference artifact generation.
 - baseline/scripts/create_final_process_baseline_report.py: candidate comparison and final report generation.
 - EDA/Edgar/eda_augmented_deep.py: deep EDA workflow and output generation.
+- Unsupervised/README.md: clustering experiments for burnout recovery, focused on K-Means baseline artifacts and KMeans benchmark comparisons.
 - Database/supabase_setup.sql: recommended Supabase schema and security policies.
 - Database/supabase_fix_for_app_sqlite_auth.sql: compatibility patch for app-managed auth mirroring.
 
@@ -82,6 +83,8 @@ For Supabase schema setup, see Database/SUPABASE_SETUP_GUIDE.md and SQL files in
 
 - Baseline metrics and model metadata are generated in baseline/outputs/final_baseline_model.
 - EDA outputs (summary text, CSV diagnostics, figures) are generated in EDA/Edgar/outputs/augmented_deep.
+- Unsupervised baseline outputs are generated in Unsupervised/outputs/baseline_kmeans.
+- Unsupervised benchmark outputs are generated in Unsupervised/outputs/kmeans_benchmark.
 
 ## Responsible Use
 
