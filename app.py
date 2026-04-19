@@ -7,15 +7,13 @@ and optional Supabase sync together to simplify project delivery.
 
 import os
 import json
-import sqlite3
 import uuid
 import secrets
 import hashlib
 import hmac
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlparse
-
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -28,38 +26,11 @@ load_dotenv(override=True)
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "utakbhate0943@sdsu.com").strip().lower()
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DIR = os.path.join(APP_DIR, "Database")
-DB_PATH = os.path.join(DB_DIR, "auracheck.db")
 USER_RESPONSES_JSON_PATH = os.path.join(APP_DIR, "Dataset", "user_responses.json")
 
-REQUIRED_FIELDS = [
-    "Age", "Course", "Gender", "CGPA", "Sleep_Quality",
-    "Physical_Activity", "Diet_Quality", "Social_Support",
-    "Relationship", "Substance_Use", "Counseling",
-    "Family_History", "Chronic_Illness", "Financial_Stress",
-    "Extracurricular", "Semester", "Residence_Type",
-]
-
-POSITIVE_THOUGHTS = [
-    "🌟 You are capable of overcoming challenges",
-    "💚 Your mental health matters and deserves attention",
-    "🌈 Every day is a fresh opportunity for growth",
-    "💫 You have strength within you",
-    "🌸 Self-care is not selfish, it's essential",
-    "⭐ Progress over perfection always",
-    "🎯 Your feelings are valid and important",
-    "🌊 Challenges help you grow stronger",
-    "💡 You deserve to be happy and healthy",
-    "🦋 Transformation starts with self-compassion",
-]
-
-# These fields are treated as stable baseline attributes after first response.
-STATIC_USER_FIELDS = {
-    "Age": "survey_age",
-    "Course": "survey_course",
-    "Gender": "survey_gender",
-}
-
+REQUIRED_FIELDS = ["Age", "Course", "Gender", "CGPA", "Sleep_Quality", "Physical_Activity", "Diet_Quality", "Social_Support", "Relationship", "Substance_Use", "Counseling", "Family_History", "Chronic_Illness", "Financial_Stress", "Extracurricular", "Semester", "Residence_Type"]
+POSITIVE_THOUGHTS = ["🌟 You are capable of overcoming challenges", "💚 Your mental health matters and deserves attention", "🌈 Every day is a fresh opportunity for growth", "💫 You have strength within you", "🌸 Self-care is not selfish, it's essential", "⭐ Progress over perfection always", "🎯 Your feelings are valid and important", "🌊 Challenges help you grow stronger", "💡 You deserve to be happy and healthy", "🦋 Transformation starts with self-compassion"]
+STATIC_USER_FIELDS = {"Age": "survey_age","Course": "survey_course","Gender": "survey_gender","Relationship": "survey_relationship","CGPA": "survey_cgpa"}
 
 def normalize_supabase_url(url_value: str) -> str:
     """Normalize Supabase URL so env variants do not break client setup."""
@@ -68,634 +39,197 @@ def normalize_supabase_url(url_value: str) -> str:
         normalized = f"https://{normalized}"
     return normalized
 
-
 SUPABASE_URL = normalize_supabase_url(os.getenv("SUPABASE_URL", ""))
 SUPABASE_KEY = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or "").strip()
-
 st.set_page_config(page_title="AuraCheck", page_icon="💜", layout="wide")
 
-# Custom CSS - Light purple background with single card design
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700&display=swap');
-    
-    * {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    :root {
+        --purple-1: #9B7FB5;
+        --purple-2: #8B6FA5;
+        --purple-3: #705291;
+        --ink-1: #3F2456;
+        --ink-2: #5A3D79;
+        --blue-1: #355DCB;
+        --blue-2: #234AAE;
     }
-    
-    /* Light purple background */
-    .stApp {
-        background: linear-gradient(135deg, #E3D7F2 0%, #ECE0F7 50%, #DDCFEC 100%);
-        min-height: 100vh;
-        padding: 6px 15px;
-    }
+    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .stApp { background: linear-gradient(135deg, #E3D7F2 0%, #ECE0F7 50%, #DDCFEC 100%); min-height: 100vh; padding: 4px 10px; }
+    .main .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .main {background: linear-gradient(135deg, rgba(248,244,253,.95) 0%, rgba(244,238,251,.95) 50%, rgba(239,232,248,.95) 100%);
+        border-radius: 40px; padding: 0; margin: 12px auto; max-width: 750px; width: 100%; overflow: hidden;
+        border: 5px solid var(--purple-3);
+        box-shadow: 0 35px 100px rgba(124,91,166,.3), 0 15px 50px rgba(155,127,181,.25), inset 0 1px 0 rgba(255,255,255,.7);}
+    h1, h2 { text-align: center; }
+    h1 { color: var(--ink-1); font-size: 40px; margin: 8px 0 4px; font-weight: 800; font-family: 'Poppins', sans-serif; letter-spacing: -0.8px; line-height: 1.1; }
+    h2 { color: var(--ink-2); font-size: 18px; font-weight: 500; margin: 0 0 14px; letter-spacing: 0.3px; }
+    h3 { color: var(--ink-1); font-family: 'Poppins', sans-serif; font-size: 24px; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.3px; }
+    h4 { color: #3D2C55; font-size: 18px; font-weight: 600; margin-bottom: 15px; }
+    p, span, label { color: #352549; font-weight: 500; line-height: 1.6; }
 
-    .main .block-container {
-        padding-top: 0.5rem;
-        padding-bottom: 0.5rem;
-    }
-    
-    /* Main container card - large single card */
-    .main {
-        background: linear-gradient(135deg, rgba(248, 244, 253, 0.95) 0%, rgba(244, 238, 251, 0.95) 50%, rgba(239, 232, 248, 0.95) 100%);
-        border-radius: 40px;
-        padding: 0;
-        box-shadow: 0 35px 100px rgba(124, 91, 166, 0.3), 0 15px 50px rgba(155, 127, 181, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-        margin: 25px auto;
-        max-width: 750px;
-        width: 100%;
-        border: 5px solid #705291;
-        overflow: hidden;
-    }
-    
-    /* Header section - logo and title */
-    .header-section {
-        background: transparent;
-        padding: 65px 50px 40px 50px;
-        text-align: center;
-    }
-    
-    /* Questions section */
-    .questions-section {
-        padding: 45px 50px;
-        background: transparent;
-    }
-    
-    /* Results section */
-    .results-section {
-        padding: 45px 50px;
-        background: transparent;
-    }
-    
-    /* Analyze button section */
-    .analyze-section {
-        background: transparent;
-        padding: 35px 50px;
-        text-align: center;
-    }
-    
-    /* Footer section - Login/Signup */
-    .footer-section {
-        background: transparent;
-        padding: 40px 50px 50px 50px;
-    }
-    
-    /* Button styling for questions */
-    .stButton > button {
-        width: 100%;
-        border-radius: 18px;
-        padding: 18px 28px;
-        font-size: 17px;
-        font-weight: 600;
-        border: 3px solid #355DCB !important;
-        background-color: #FFFFFF !important;
-        color: #1F3F9F !important;
-        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-        margin-bottom: 14px;
-        box-shadow: 0 6px 16px rgba(53, 93, 203, 0.25), 0 2px 8px rgba(0, 0, 0, 0.12) !important;
-        font-family: 'Inter', sans-serif;
-        letter-spacing: 0.4px;
-        text-transform: none;
-        line-height: 1.5;
-    }
-    
+    .header-section { padding: 30px 28px 16px; text-align: center; }
+    .questions-section, .results-section { padding: 18px 28px; background: transparent; }
+    .analyze-section { padding: 14px 28px; text-align: center; }
+    .footer-section { padding: 18px 28px 22px; border-radius: 0 0 30px 30px; }
+
+    .question-text { text-align: center; color: #2F2142; font-size: 20px; margin: 14px 0 18px; font-weight: 600; letter-spacing: 0.15px; line-height: 1.4; }
+    .progress-text { text-align: center; color: var(--ink-2); font-size: 13px; font-weight: 600; margin-top: 8px; letter-spacing: 0.4px; }
+    .stProgress { background-color: rgba(155,127,181,.15) !important; border-radius: 12px; margin-bottom: 12px; height: 8px; }
+    .stProgress > div > div > div > div { background: linear-gradient(90deg, var(--purple-1) 0%, var(--purple-2) 100%) !important; border-radius: 12px; height: 8px; }
+    hr { border: none; margin: 0; display: none !important; }
+
+    .stButton { animation: slideUp 0.5s ease-out; }
+    .stButton > button {width: 100%; border-radius: 18px; padding: 12px 18px; font-size: 15px; font-weight: 600; margin-bottom: 8px;
+        border: 3px solid var(--blue-1) !important; background: #FFF !important; color: #1F3F9F !important;
+        letter-spacing: 0.4px; line-height: 1.5; transition: all .35s cubic-bezier(.4,0,.2,1);
+        box-shadow: 0 6px 16px rgba(53,93,203,.25), 0 2px 8px rgba(0,0,0,.12) !important;}
     .stButton > button:hover {
-        background: linear-gradient(135deg, #355DCB 0%, #234AAE 100%) !important;
-        color: #FFFFFF !important;
-        transform: translateY(-4px);
-        border-color: #355DCB !important;
-        box-shadow: 0 16px 45px rgba(53, 93, 203, 0.45), 0 8px 20px rgba(0, 0, 0, 0.2) !important;
+        background: linear-gradient(135deg, var(--blue-1) 0%, var(--blue-2) 100%) !important; color: #FFF !important;
+        transform: translateY(-4px); border-color: var(--blue-1) !important;
+        box-shadow: 0 16px 45px rgba(53,93,203,.45), 0 8px 20px rgba(0,0,0,.2) !important;
     }
-    
-    .stButton > button:active {
-        transform: translateY(-2px);
-    }
-    
-    /* Special styling for Analyze button */
-    .analyze-btn {
-        background: linear-gradient(135deg, #9B7FB5 0%, #8B6FA5 100%) !important;
-        color: #FFFFFF !important;
-        border: 3px solid #9B7FB5 !important;
-        font-size: 18px !important;
-        padding: 20px 35px !important;
-    }
-    
-    .analyze-btn:hover {
-        background: linear-gradient(135deg, #8B6FA5 0%, #7B5F95 100%) !important;
-    }
-    
-    /* Login/Signup buttons footer styling */
-    .login-signup-container {
-        display: flex;
-        gap: 20px;
-        justify-content: center;
-        margin-top: 25px;
-    }
-    
-    .login-button {
-        border: 3px solid #8B7BA8 !important;
-        color: #8B7BA8 !important;
-        background: #FFFFFF !important;
-        flex: 1;
-        font-weight: 700 !important;
-    }
-    
-    .login-button:hover {
-        background: linear-gradient(135deg, #8B7BA8 0%, #7B6B98 100%) !important;
-        color: #FFFFFF !important;
-    }
-    
-    .signup-button {
-        border: 3px solid #9B7FB5 !important;
-        color: #FFFFFF !important;
-        background: linear-gradient(135deg, #9B7FB5 0%, #8B6FA5 100%) !important;
-        flex: 1;
-        font-weight: 700 !important;
-    }
-    
-    .signup-button:hover {
-        background: linear-gradient(135deg, #8B6FA5 0%, #7B5F95 100%) !important;
-    }
-    
-    /* Typography */
-    h1 {
-        text-align: center;
-        color: #3F2456;
-        font-size: 48px;
-        margin: 15px 0 8px 0;
-        font-weight: 800;
-        font-family: 'Poppins', sans-serif;
-        letter-spacing: -0.8px;
-        line-height: 1.1;
-    }
-    
-    h2 {
-        text-align: center;
-        color: #5A3D79;
-        font-size: 20px;
-        font-weight: 500;
-        margin: 0 0 30px 0;
-        font-family: 'Inter', sans-serif;
-        letter-spacing: 0.3px;
-    }
-    
-    h3 {
-        color: #3F2456;
-        font-family: 'Poppins', sans-serif;
-        font-size: 28px;
-        font-weight: 700;
-        margin-top: 0;
-        margin-bottom: 20px;
-        letter-spacing: -0.3px;
-    }
-    
-    h4 {
-        color: #3D2C55;
-        font-family: 'Inter', sans-serif;
-        font-size: 18px;
-        font-weight: 600;
-        margin-bottom: 15px;
-    }
-    
-    /* Question text */
-    .question-text {
-        text-align: center;
-        color: #2F2142;
-        font-size: 24px;
-        margin: 30px 0 35px 0;
-        font-weight: 600;
-        font-family: 'Inter', sans-serif;
-        letter-spacing: 0.15px;
-        line-height: 1.4;
-    }
-    
-    /* Logo styling */
-    .logo {
-        text-align: center;
-        margin: 0 0 20px 0;
-        animation: pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-    
-    .logo img {
-        animation: pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.8; transform: scale(1.06); }
-    }
-    
-    /* Progress bar */
-    .stProgress > div > div > div > div {
-        background: linear-gradient(90deg, #9B7FB5 0%, #8B6FA5 100%) !important;
-        border-radius: 12px;
-        height: 8px;
-    }
-    
-    .stProgress {
-        background-color: rgba(155, 127, 181, 0.15) !important;
-        border-radius: 12px;
-        margin-bottom: 22px;
-        height: 8px;
-    }
-    
-    /* Progress text */
-    .progress-text {
-        text-align: center;
-        color: #5A3D79;
-        font-size: 13px;
-        font-weight: 600;
-        margin-top: 12px;
-        letter-spacing: 0.4px;
-    }
-    
-    /* Dividers - hidden */
-    hr {
-        border: none;
-        border-top: none;
-        margin: 0;
-        display: none !important;
-    }
-    
-    /* Text styling */
-    p, span, label {
-        color: #352549;
-        font-weight: 500;
-        line-height: 1.6;
-    }
+    .stButton > button:active { transform: translateY(-2px); }
+    .analyze-btn { background: linear-gradient(135deg, var(--purple-1) 0%, var(--purple-2) 100%) !important; color: #FFF !important; border: 3px solid var(--purple-1) !important; font-size: 18px !important; padding: 20px 35px !important; }
 
-    .stTextInput label {
-        color: #2F2142 !important;
-        font-weight: 600 !important;
-    }
+    .login-signup-container { display: flex; gap: 20px; justify-content: center; margin-top: 25px; }
+    .login-button, .signup-button { flex: 1; font-weight: 700 !important; }
+    .login-button { border: 3px solid #8B7BA8 !important; color: #8B7BA8 !important; background: #FFF !important; }
+    .signup-button { border: 3px solid var(--purple-1) !important; color: #FFF !important; background: linear-gradient(135deg, var(--purple-1) 0%, var(--purple-2) 100%) !important; }
 
-    .stTextInput input {
-        color: #221532 !important;
-        background-color: #FFFFFF !important;
-        border: 2px solid #6C4B92 !important;
-    }
+    .stTextInput label { color: #2F2142 !important; font-weight: 600 !important; }
+    .stTextInput input { color: #221532 !important; background: #FFF !important; border: 2px solid #6C4B92 !important; }
+    .stTextInput input::placeholder { color: #6A5A82 !important; }
 
-    .stTextInput input::placeholder {
-        color: #6A5A82 !important;
-    }
-    
-    /* Metric containers */
     [data-testid="metric-container"] {
         background: linear-gradient(135deg, #F5F0FF 0%, #FAFBFF 100%);
-        border-radius: 18px;
-        padding: 24px;
-        border: 2px solid #D4C5E2;
-        box-shadow: 0 4px 12px rgba(155, 127, 181, 0.15);
+        border-radius: 18px; padding: 16px; border: 2px solid #D4C5E2;
+        box-shadow: 0 4px 12px rgba(155,127,181,.15);
     }
-    
-    /* Expanders */
     [data-testid="stExpander"] {
-        border: 2px solid #D4C5E2 !important;
-        border-radius: 14px !important;
+        border: 2px solid #D4C5E2 !important; border-radius: 14px !important;
         background: linear-gradient(135deg, #FAFBFF 0%, #F5F8FF 100%) !important;
     }
-    
-    /* Animation */
-    @keyframes slideUp {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    .stButton {
-        animation: slideUp 0.5s ease-out;
-    }
-    
-    /* Card styling */
     .card-style {
-        background: linear-gradient(135deg, #FFFFFF 0%, #FAFBFF 100%);
-        border-radius: 16px;
-        padding: 24px;
-        border: 2px solid #E8DFF5;
-        box-shadow: 0 4px 15px rgba(155, 127, 181, 0.1), 0 2px 8px rgba(0, 0, 0, 0.05);
-        margin-bottom: 18px;
+        background: linear-gradient(135deg, #FFF 0%, #FAFBFF 100%);
+        border-radius: 16px; padding: 16px; border: 2px solid #E8DFF5; margin-bottom: 12px;
+        box-shadow: 0 4px 15px rgba(155,127,181,.1), 0 2px 8px rgba(0,0,0,.05);
     }
-    
-    /* Footer text */
-    .footer-text {
-        text-align: center;
-        color: #7A6B8F;
-        font-size: 15px;
-        margin-bottom: 25px;
-        font-weight: 500;
-    }
-    
-    /* Shiny purple placeholder - big background container */
+    .footer-text { text-align: center; color: #7A6B8F; font-size: 15px; margin-bottom: 12px; font-weight: 500; }
+
     .content-placeholder {
-        background: linear-gradient(135deg, rgba(229, 216, 241, 0.82) 0%, rgba(222, 208, 236, 0.8) 50%, rgba(216, 199, 232, 0.84) 100%);
-        border-radius: 32px;
-        padding: 0;
-        position: relative;
-        overflow: hidden;
-        margin: 20px;
+        background: linear-gradient(135deg, rgba(229,216,241,.82) 0%, rgba(222,208,236,.8) 50%, rgba(216,199,232,.84) 100%);
+        border-radius: 32px; position: relative; overflow: hidden; margin: 10px;
     }
-    
     .content-placeholder::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(
-            45deg,
-            transparent 25%,
-            rgba(255, 255, 255, 0.12) 50%,
-            transparent 75%
-        );
+        content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+        background: linear-gradient(45deg, transparent 25%, rgba(255,255,255,.12) 50%, transparent 75%);
         animation: shimmer 3.5s infinite;
-        pointer-events: none;
-        z-index: 1;
     }
-    
-    @keyframes shimmer {
-        0% {
-            transform: translateX(-150%);
-        }
-        100% {
-            transform: translateX(150%);
-        }
-    }
-    
-    .content-placeholder > * {
-        position: relative;
-        z-index: 2;
-    }
-    
-    /* Adjust section styles to work inside placeholder */
-    .header-section {
-        background: transparent;
-        padding: 60px 50px 35px 50px;
-        text-align: center;
-    }
-    
-    .questions-section {
-        padding: 40px 50px;
-        background: transparent;
-    }
-    
-    .results-section {
-        padding: 40px 50px;
-        background: transparent;
-    }
-    
-    .analyze-section {
-        background: transparent;
-        padding: 30px 50px;
-        text-align: center;
-    }
-    
-    .footer-section {
-        background: transparent;
-        padding: 35px 50px 45px 50px;
-        border-radius: 0 0 30px 30px;
-    }
-    
-    /* 3-Column Layout Styles */
-    .left-section {
-        background: transparent;
-        padding: 0;
-        border-radius: 20px;
-        text-align: center;
-        height: auto;
-        min-height: 0;
-        display: block;
-    }
-    
-    .middle-section {
-        background: transparent;
-        padding: 40px 32px 44px 32px;
-        border-radius: 24px;
-        height: auto;
-        min-height: 0;
-        min-width: 760px;
-        max-width: 760px;
-        margin: 0 auto;
-        display: block;
-       
-    }
+    .content-placeholder > * { position: relative; z-index: 2; }
 
-    .middle-panel {
-        background: #ffffff;
-        border: none;
-        border-radius: 0;
-        padding: 0;
-        box-shadow: none;
-    }
-    
-    .right-section {
-        background: transparent;
-        padding: 0;
-        border-radius: 20px;
-        display: block;
-        height: auto;
-        min-height: 0;
-        min-width: 300px;
-        max-width: 300px;
-        margin: 0 auto;
-    }
-    
-    /* Good Thoughts Section */
-    .good-thoughts-header {
-        color: #2D1A42;
-        font-size: 22px;
-        font-weight: 700;
-        text-align: center;
-        margin: 35px 0 20px 0;
-        letter-spacing: 0.3px;
-        font-family: 'Poppins', sans-serif;
-    }
-    
-    .good-thoughts-container {
-        background: transparent;
-        border-radius: 14px;
-        margin: 0;
-        padding: 8px 0;
-    }
-    
+    .left-section, .middle-section, .right-section { display: block; height: auto; min-height: 0; }
+    .left-section { text-align: center; }
+    .middle-section { padding: 22px 20px 26px; border-radius: 24px; min-width: 760px; max-width: 760px; margin: 0 auto; }
+    .middle-panel { background: #FFF; border: none; padding: 0; box-shadow: none; }
+    .right-section { background: transparent; border-radius: 20px; min-width: 300px; max-width: 300px; margin: 0 auto; }
+
+    .good-thoughts-header { color: #2D1A42; font-size: 20px; font-weight: 700; text-align: center; margin: 18px 0 10px; letter-spacing: 0.3px; font-family: 'Poppins', sans-serif; }
+    .good-thoughts-container { border-radius: 14px; padding: 8px 0; }
     .thought-item {
-        color: #5B4B6F;
-        font-size: 25px;
-        font-weight: 700;
-        text-align: center;
-        padding: 16px 16px;
-        margin: 30px 0;
-        background: rgba(155, 127, 181, 0.15);
-        border-radius: 10px;
-        border: 1px solid rgba(155, 127, 181, 0.15);
-        line-height: 1.5;
-        transition: all 0.6s ease;
+        color: #5B4B6F; font-size: 20px; font-weight: 700; text-align: center; line-height: 1.5;
+        padding: 12px; margin: 14px 0; border-radius: 10px; transition: all .6s ease;
+        background: rgba(155,127,181,.15); border: 1px solid rgba(155,127,181,.15);
     }
-    
-    .thought-item:hover {
-        background: linear-gradient(135deg, rgba(155, 127, 181, 0.15) 0%, rgba(200, 170, 220, 0.15) 100%);
-        border-color: rgba(155, 127, 181, 0.3);
-        transform: translateY(-2px);
-    }
+    .thought-item:hover { background: linear-gradient(135deg, rgba(155,127,181,.15) 0%, rgba(200,170,220,.15) 100%); border-color: rgba(155,127,181,.3); transform: translateY(-2px); }
+    .thought-animated-box { min-height: 90px; display: flex; align-items: center; justify-content: center; }
 
-    .thought-animated-box {
-        min-height: 120px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
+    .left-section h1 { font-size: 46px; margin: 10px 0 6px; }
+    .left-section h2 { font-size: 26px; font-weight: 600; margin: 0 0 12px; }
+    .auth-header { color: var(--ink-1); font-size: 18px; font-weight: 700; text-align: center; margin: 0 0 10px; font-family: 'Poppins', sans-serif; }
+    .auth-subtext { color: #4D3468; font-size: 12px; text-align: center; line-height: 1.5; font-weight: 600; letter-spacing: 0.2px; }
 
-    .left-section h1 {
-        font-size: 56px;
-        margin: 18px 0 10px 0;
-    }
+    @keyframes pulse { 0%,100% {opacity:1; transform:scale(1);} 50% {opacity:.8; transform:scale(1.06);} }
+    .logo, .logo img { animation: pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes slideUp { from {opacity:0; transform:translateY(20px);} to {opacity:1; transform:translateY(0);} }
+    @keyframes shimmer { 0% {transform:translateX(-150%);} 100% {transform:translateX(150%);} }
 
-    .left-section h2 {
-        font-size: 32px;
-        font-weight: 600;
-        margin: 0 0 24px 0;
-    }
-    
-    /* Auth Section - Right Column */
-    .auth-header {
-        color: #3F2456;
-        font-size: 18px;
-        font-weight: 700;
-        text-align: center;
-        margin: 0 0 15px 0;
-        font-family: 'Poppins', sans-serif;
-        letter-spacing: -0.3px;
-    }
-    
-    .auth-subtext {
-        color: #4D3468;
-        font-size: 12px;
-        text-align: center;
-        line-height: 1.5;
-        font-weight: 600;
-        letter-spacing: 0.2px;
-    }
-    
-    /* Responsive adjustments for smaller screens */
     @media (max-width: 1200px) {
-        .left-section h1 {
-            font-size: 44px;
-        }
-        
-        .left-section h2 {
-            font-size: 24px;
-        }
-        
-        .thought-item {
-            font-size: 17px;
-            padding: 14px 12px;
-        }
-
-        .good-thoughts-header {
-            font-size: 20px;
-        }
-
-        .middle-section {
-            min-width: auto;
-            max-width: 100%;
-            height: auto;
-            min-height: 0;
-        }
-
-        .right-section {
-            min-width: auto;
-            max-width: 100%;
-            height: auto;
-            min-height: 0;
-        }
-
-        .left-section {
-            height: auto;
-            min-height: 0;
-        }
+        .left-section h1 { font-size: 44px; }
+        .left-section h2 { font-size: 24px; }
+        .thought-item { font-size: 17px; padding: 14px 12px; }
+        .good-thoughts-header { font-size: 20px; }
+        .middle-section, .right-section { min-width: auto; max-width: 100%; }
     }
     
 </style>
 """, unsafe_allow_html=True)
 
-
-# =========================================
-# Prediction and questionnaire helper methods
-# =========================================
 def get_static_models():
-    """Return static/mock model data for demonstration."""
-    return {
-        "logistic_regression": {
-            "feature_cols": ["Age", "Course", "Gender", "CGPA", "Sleep_Quality", 
-                           "Physical_Activity", "Diet_Quality", "Social_Support", 
-                           "Relationship", "Substance_Use", "Counseling", 
-                           "Family_History", "Chronic_Illness", "Financial_Stress", 
-                           "Extracurricular", "Semester", "Residence_Type"],
-            "accuracy": 0.85,
-            "f1_score": 0.82,
-        },
-        "gradient_boosting": {
-            "feature_cols": ["Age", "Course", "Gender", "CGPA", "Sleep_Quality", 
-                           "Physical_Activity", "Diet_Quality", "Social_Support", 
-                           "Relationship", "Substance_Use", "Counseling", 
-                           "Family_History", "Chronic_Illness", "Financial_Stress", 
-                           "Extracurricular", "Semester", "Residence_Type"],
-            "accuracy": 0.88,
-            "f1_score": 0.85,
-        },
-        "kmeans": {
-            "feature_cols": ["Sleep_Quality", "Physical_Activity", "CGPA", 
-                           "Social_Support", "Counseling", "Financial_Stress"],
-            "silhouette_score": 0.42,
+    """Return available trained model metadata (with safe fallback values)."""
+    try:
+        from pathlib import Path
+        from scripts.integrated_model_inference import (
+            build_or_load_kmeans_bundle,
+            load_baseline_assets,
+        )
+
+        project_root = Path(APP_DIR)
+        baseline_bundle, baseline_meta = load_baseline_assets(project_root)
+        kmeans_bundle = build_or_load_kmeans_bundle(project_root)
+
+        baseline_metrics = baseline_meta.get("metrics", {}) if isinstance(baseline_meta, dict) else {}
+        baseline_accuracy = float(baseline_metrics.get("Accuracy", 0.0))
+        baseline_macro_recall = float(baseline_metrics.get("Macro_Recall", 0.0))
+
+        baseline_info = {
+            "feature_cols": baseline_meta.get("features", []),
+            "accuracy": baseline_accuracy,
+            "f1_score": baseline_macro_recall,
+            "class_names": baseline_meta.get("class_names", []),
+            "model_type": baseline_meta.get("model_type", "Multinomial Logistic Regression"),
+            "bundle_loaded": bool(baseline_bundle),
         }
-    }
+        kmeans_info = {
+            "feature_cols": kmeans_bundle.get("feature_cols", []),
+            "n_clusters": int(getattr(kmeans_bundle.get("kmeans"), "n_clusters", 4)),
+            "cluster_mapping": kmeans_bundle.get("cluster_to_burnout_class", {}),
+        }
 
-
-def predict_stress_level(answers: dict, model_type: str = "logistic") -> int:
-    """Generate stress prediction based on input answers."""
-    stress_factors = 0
-    
-    if "Sleep_Quality" in answers:
-        try:
-            sleep_val = float(answers["Sleep_Quality"]) if isinstance(answers["Sleep_Quality"], (int, float)) else 3
-            stress_factors += (5 - sleep_val)
-        except:
-            stress_factors += 2
-    
-    if "Financial_Stress" in answers:
-        try:
-            fin_val = float(answers["Financial_Stress"]) if isinstance(answers["Financial_Stress"], (int, float)) else 5
-            stress_factors += fin_val / 2
-        except:
-            stress_factors += 2.5
-    
-    if "Physical_Activity" in answers:
-        try:
-            activity_val = float(answers["Physical_Activity"]) if isinstance(answers["Physical_Activity"], (int, float)) else 3
-            stress_factors += (5 - activity_val) * 0.5
-        except:
-            stress_factors += 1
-    
-    if "Social_Support" in answers:
-        try:
-            social_val = float(answers["Social_Support"]) if isinstance(answers["Social_Support"], (int, float)) else 3
-            stress_factors += (5 - social_val) * 0.5
-        except:
-            stress_factors += 1
-    
-    if "Counseling" in answers:
-        counseling_val = str(answers.get("Counseling", "No")).lower()
-        if "no" in counseling_val:
-            stress_factors += 1.5
-    
-    stress_level = min(5, max(0, int(stress_factors / 2)))
-    return stress_level
-
+        return {
+            "baseline_multinomial": baseline_info,
+            "kmeans": kmeans_info,
+            # Backward-compatible aliases used by earlier UI sections.
+            "logistic_regression": baseline_info,
+            "gradient_boosting": baseline_info,
+        }
+    except Exception:
+        return {
+            "baseline_multinomial": {
+                "feature_cols": REQUIRED_FIELDS,
+                "accuracy": 0.0,
+                "f1_score": 0.0,
+                "class_names": ["Very Low (Q1)", "Low (Q2)", "Moderate (Q3)", "High (Q4)"],
+                "model_type": "Unavailable",
+                "bundle_loaded": False,
+            },
+            "kmeans": {
+                "feature_cols": ["Sleep_Quality", "Physical_Activity", "CGPA", "Social_Support", "Counseling", "Financial_Stress"],
+                "n_clusters": 4,
+                "cluster_mapping": {},
+            },
+            "logistic_regression": {
+                "feature_cols": REQUIRED_FIELDS,
+                "accuracy": 0.0,
+                "f1_score": 0.0,
+            },
+            "gradient_boosting": {
+                "feature_cols": REQUIRED_FIELDS,
+                "accuracy": 0.0,
+                "f1_score": 0.0,
+            },
+        }
 
 def get_question_for_field(field_name: str) -> str:
     """Get conversational question for a given field."""
@@ -715,11 +249,10 @@ def get_question_for_field(field_name: str) -> str:
         "Chronic_Illness": "🏥 Do you have any chronic illness?",
         "Financial_Stress": "💰 How's your financial situation?",
         "Extracurricular": "🎨 Are you involved in extracurricular activities?",
-        "Semester": "📅 What semester are you in?",
+        "Semester": "📅 how many semesters have you enrolled in?",
         "Residence_Type": "🏠 Where do you stay?",
     }
     return questions.get(field_name, f"Tell me about {field_name}")
-
 
 def get_field_options(field_name: str) -> list:
     """Get predefined button options for each field."""
@@ -739,27 +272,23 @@ def get_field_options(field_name: str) -> list:
         "Chronic_Illness": ["Yes", "No", "Under investigation"],
         "Financial_Stress": ["🔴 Very High (1)", "🟠 High (2)", "🟡 Moderate (3)", "🟢 Low (4)", "💚 None (5)"],
         "Extracurricular": ["Very involved", "Somewhat involved", "Minimally involved", "Not involved"],
-        "Semester": ["1st", "2nd", "3rd", "4th", "5th+"],
+        "Semester": ["15", "16", "17", "18", "19","20", "21","22","23","24","25","26","27","28","29","30","30+"],
         "Residence_Type": ["Home", "Hostel", "Apartment", "Dorm", "Other"],
     }
     return options.get(field_name, [])
 
 
-# =============================================
-# Persistence layer (SQLite + optional Supabase)
-# =============================================
-def get_db_connection() -> sqlite3.Connection:
-    """Get SQLite connection for AuraCheck app data."""
-    os.makedirs(DB_DIR, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH)
-    connection.execute("PRAGMA foreign_keys = ON;")
-    return connection
-
+# Persistence layer (Supabase-only)
+def get_required_supabase_client():
+    """Return a ready Supabase client or raise when unavailable."""
+    client = get_supabase_client()
+    if client is None:
+        raise RuntimeError("Supabase is not configured or currently unavailable.")
+    return client
 
 def is_supabase_enabled() -> bool:
     """Return True when Supabase env variables are configured."""
     return bool(SUPABASE_URL and SUPABASE_KEY)
-
 
 def is_dns_resolution_error(exception: Exception) -> bool:
     """Return True when exception text indicates DNS hostname resolution failed."""
@@ -772,7 +301,6 @@ def is_dns_resolution_error(exception: Exception) -> bool:
         "getaddrinfo failed",
     ]
     return any(pattern in error_text for pattern in patterns)
-
 
 @st.cache_resource
 def get_supabase_client():
@@ -789,9 +317,8 @@ def get_supabase_client():
     except Exception:
         return None
 
-
 def sync_payload_to_supabase(table_name: str, payload: dict, on_conflict: str) -> None:
-    """Sync payload to Supabase with graceful fallback to local-only mode."""
+    """Upsert payload into Supabase and track sync errors in session state."""
     client = get_supabase_client()
     if client is None:
         return
@@ -802,108 +329,34 @@ def sync_payload_to_supabase(table_name: str, payload: dict, on_conflict: str) -
         if is_dns_resolution_error(exc):
             st.session_state["supabase_sync_temporarily_disabled"] = True
             st.session_state["last_supabase_sync_error"] = (
-                "Supabase host could not be resolved. Local save succeeded; "
-                "remote sync paused for this session."
+                "Supabase host could not be resolved. Data operations are paused "
+                "for this session until connectivity is restored."
             )
             return
         st.session_state["last_supabase_sync_error"] = f"{table_name} sync failed: {exc}"
-
 
 def sync_user_to_supabase(user_payload: dict) -> None:
     """Mirror user record to Supabase when configured."""
     sync_payload_to_supabase("users", user_payload, "user_id")
 
-
 def sync_profile_to_supabase(profile_payload: dict) -> None:
     """Mirror profile record to Supabase when configured."""
     sync_payload_to_supabase("profile", profile_payload, "user_id")
-
 
 def sync_daily_input_to_supabase(daily_payload: dict) -> None:
     """Mirror daily input record to Supabase when configured."""
     sync_payload_to_supabase("daily_inputs", daily_payload, "user_id,input_date")
 
-
 def init_database() -> None:
-    """Create required tables if they do not exist."""
-    with get_db_connection() as connection:
-        cursor = connection.cursor()
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                user_id TEXT PRIMARY KEY,
-                first_name TEXT NOT NULL,
-                last_name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                phone_number TEXT,
-                city TEXT,
-                zip_code TEXT,
-                password_hash TEXT NOT NULL,
-                password_salt TEXT NOT NULL,
-                is_verified INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS profile (
-                profile_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL UNIQUE,
-                age INTEGER,
-                lifestyle_parameters TEXT,
-                personal_details TEXT,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-            );
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS daily_inputs (
-                entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                input_date TEXT NOT NULL,
-                submitted_at TEXT NOT NULL,
-                answers_json TEXT NOT NULL,
-                prediction_json TEXT NOT NULL,
-                cluster INTEGER,
-                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-                UNIQUE(user_id, input_date)
-            );
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS daily_feedback (
-                feedback_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                input_date TEXT NOT NULL,
-                recommendation_followed INTEGER,
-                recommendation_helpful INTEGER,
-                feedback_rating INTEGER,
-                app_feedback TEXT,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-                UNIQUE(user_id, input_date)
-            );
-            """
-        )
+    """Validate Supabase connectivity for required app tables."""
+    try:
+        client = get_required_supabase_client()
+        client.table("users").select("user_id").limit(1).execute()
+        st.session_state["last_supabase_sync_error"] = None
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"Supabase setup check failed: {exc}"
 
-        # Backward-compatible migration for older local DBs.
-        cursor.execute("PRAGMA table_info(users)")
-        existing_user_columns = {row[1] for row in cursor.fetchall()}
-        for column_name in STATIC_USER_FIELDS.values():
-            if column_name not in existing_user_columns:
-                cursor.execute(f"ALTER TABLE users ADD COLUMN {column_name} TEXT")
-
-        connection.commit()
-
-
-    # =====================================
     # Authentication and profile data access
-    # =====================================
 def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
     """Hash password with PBKDF2-HMAC-SHA256 and a per-user salt."""
     salt_value = salt or secrets.token_hex(16)
@@ -915,97 +368,61 @@ def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
     )
     return hashed.hex(), salt_value
 
-
 def verify_password(password: str, expected_hash: str, salt: str) -> bool:
     """Verify password against stored hash and salt."""
     calculated_hash, _ = hash_password(password, salt)
     return hmac.compare_digest(calculated_hash, expected_hash)
 
-
-def create_user(
-    first_name: str,
-    last_name: str,
-    email: str,
-    password: str,
-    phone_number: str = "",
-    city: str = "",
-    zip_code: str = "",
-) -> tuple[bool, str]:
-    """Create a user account in SQL database."""
+def create_user(first_name: str, last_name: str, email: str, password: str, phone_number: str = "", city: str = "", zip_code: str = "") -> tuple[bool, str]:
+    """Create a user account in Supabase."""
     normalized_email = email.strip().lower()
     password_hash, password_salt = hash_password(password)
     user_id = str(uuid.uuid4())
 
     try:
-        with get_db_connection() as connection:
-            connection.execute(
-                """
-                INSERT INTO users (
-                    user_id, first_name, last_name, email,
-                    phone_number, city, zip_code,
-                    password_hash, password_salt, is_verified
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-                """,
-                (
-                    user_id,
-                    first_name.strip(),
-                    last_name.strip(),
-                    normalized_email,
-                    phone_number.strip() or None,
-                    city.strip() or None,
-                    zip_code.strip() or None,
-                    password_hash,
-                    password_salt,
-                ),
-            )
-            connection.commit()
-
-        sync_user_to_supabase(
-            {
-                "user_id": user_id,
-                "first_name": first_name.strip(),
-                "last_name": last_name.strip(),
-                "email": normalized_email,
-                "phone_number": phone_number.strip() or None,
-                "city": city.strip() or None,
-                "zip_code": zip_code.strip() or None,
-                "password_hash": password_hash,
-                "password_salt": password_salt,
-                "is_verified": False,
-            }
-        )
+        client = get_required_supabase_client()
+        client.table("users").insert({"user_id": user_id, "first_name": first_name.strip(), "last_name": last_name.strip(), "email": normalized_email, "phone_number": phone_number.strip() or None, "city": city.strip() or None, "zip_code": zip_code.strip() or None, "password_hash": password_hash, "password_salt": password_salt, "is_verified": False}).execute()
+        st.session_state["last_supabase_sync_error"] = None
         return True, user_id
-    except sqlite3.IntegrityError:
-        return False, "A user with this email already exists."
-    except Exception:
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"users create failed: {exc}"
+        if "duplicate" in str(exc).lower() or "unique" in str(exc).lower():
+            return False, "A user with this email already exists."
         return False, "Unable to create account right now. Please try again."
 
 
 def authenticate_user(email: str, password: str) -> tuple[bool, Optional[dict], str]:
     """Authenticate user by email and password."""
     normalized_email = email.strip().lower()
-    with get_db_connection() as connection:
-        cursor = connection.cursor()
-        cursor.execute(
-            """
-            SELECT user_id, first_name, last_name, email, password_hash, password_salt
-            FROM users
-            WHERE email = ?
-            """,
-            (normalized_email,),
+    try:
+        client = get_required_supabase_client()
+        response = (
+            client.table("users")
+            .select("user_id,first_name,last_name,email,password_hash,password_salt")
+            .eq("email", normalized_email)
+            .limit(1)
+            .execute()
         )
-        row = cursor.fetchone()
+        rows = response.data or []
+        row = rows[0] if rows else None
+    except Exception:
+        return False, None, "Login service is currently unavailable."
 
     if not row:
         return False, None, "No account found with this email."
 
+    if not isinstance(row, dict):
+        return False, None, "Login service returned unexpected data format."
+
     user_data = {
-        "user_id": row[0],
-        "first_name": row[1],
-        "last_name": row[2],
-        "email": row[3],
+        "user_id": str(row.get("user_id") or ""),
+        "first_name": str(row.get("first_name") or ""),
+        "last_name": str(row.get("last_name") or ""),
+        "email": str(row.get("email") or ""),
     }
-    if not verify_password(password, row[4], row[5]):
+    expected_hash = str(row.get("password_hash") or "")
+    password_salt = str(row.get("password_salt") or "")
+    if not verify_password(password, expected_hash, password_salt):
         return False, None, "Invalid password."
 
     return True, user_data, ""
@@ -1014,63 +431,43 @@ def authenticate_user(email: str, password: str) -> tuple[bool, Optional[dict], 
 def upsert_profile(user_id: str, age: Optional[int], lifestyle_parameters: str, personal_details: str) -> bool:
     """Create or update profile details for a user."""
     try:
-        with get_db_connection() as connection:
-            connection.execute(
-                """
-                INSERT INTO profile (user_id, age, lifestyle_parameters, personal_details, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(user_id) DO UPDATE SET
-                    age = excluded.age,
-                    lifestyle_parameters = excluded.lifestyle_parameters,
-                    personal_details = excluded.personal_details,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (
-                    user_id,
-                    age,
-                    lifestyle_parameters.strip() or None,
-                    personal_details.strip() or None,
-                ),
-            )
-            connection.commit()
-
-        sync_profile_to_supabase(
+        client = get_required_supabase_client()
+        client.table("profile").upsert(
             {
                 "user_id": user_id,
                 "age": age,
                 "lifestyle_parameters": {"text": lifestyle_parameters.strip()} if lifestyle_parameters.strip() else {},
                 "personal_details": {"text": personal_details.strip()} if personal_details.strip() else {},
-            }
-        )
+            },
+            on_conflict="user_id",
+        ).execute()
+        st.session_state["last_supabase_sync_error"] = None
         return True
-    except Exception:
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"profile upsert failed: {exc}"
         return False
 
 
 def get_user_static_answers(user_id: str) -> dict:
     """Return saved baseline answers (age/course/gender) for a user, if present."""
-    with get_db_connection() as connection:
-        cursor = connection.cursor()
-        cursor.execute(
-            """
-            SELECT survey_age, survey_course, survey_gender
-            FROM users
-            WHERE user_id = ?
-            LIMIT 1
-            """,
-            (user_id,),
+    try:
+        client = get_required_supabase_client()
+        response = (
+            client.table("users")
+            .select("survey_age,survey_course,survey_gender")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
         )
-        row = cursor.fetchone()
-
-    if not row:
+        rows = response.data or []
+        row = rows[0] if rows else None
+    except Exception:
         return {}
 
-    return {
-        "Age": row[0],
-        "Course": row[1],
-        "Gender": row[2],
-    }
+    if not isinstance(row, dict):
+        return {}
 
+    return {"Age": row.get("survey_age"),"Course": row.get("survey_course"),"Gender": row.get("survey_gender"),"Relationship": row.get("survey_relationship"),"CGPA": row.get("survey_cgpa")}
 
 def save_user_static_answer_if_missing(user_id: str, field_name: str, field_value: str) -> None:
     """Persist first submitted baseline answer only once for the user."""
@@ -1079,147 +476,122 @@ def save_user_static_answer_if_missing(user_id: str, field_name: str, field_valu
     if not column_name or not value:
         return
 
-    with get_db_connection() as connection:
-        connection.execute(
-            f"""
-            UPDATE users
-            SET {column_name} = COALESCE(NULLIF({column_name}, ''), ?),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ?
-            """,
-            (value, user_id),
+    try:
+        client = get_required_supabase_client()
+        current_response = (
+            client.table("users")
+            .select(column_name)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
         )
-        connection.commit()
+        rows = current_response.data or []
+        row = rows[0] if rows else None
+        current_value = row.get(column_name) if isinstance(row, dict) else ""
+        if str(current_value).strip():
+            return
+
+        client.table("users").update({column_name: value}).eq("user_id", user_id).execute()
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"users static answer update failed: {exc}"
 
 
 def save_user_daily_input_to_sql(user_id: str, answers: dict, prediction: dict, cluster: int) -> tuple[bool, str]:
-    """Save one daily questionnaire response per user to SQL."""
+    """Save one daily questionnaire response per user to Supabase."""
     today_value = date.today().isoformat()
     submitted_at = datetime.now().isoformat()
 
     try:
-        with get_db_connection() as connection:
-            connection.execute(
-                """
-                INSERT INTO daily_inputs (
-                    user_id, input_date, submitted_at, answers_json, prediction_json, cluster
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    user_id,
-                    today_value,
-                    submitted_at,
-                    json.dumps(answers),
-                    json.dumps(prediction),
-                    cluster,
-                ),
-            )
-            connection.commit()
-
-        sync_daily_input_to_supabase(
-            {
-                "user_id": user_id,
-                "input_date": today_value,
-                "submitted_at": submitted_at,
-                "answers_json": answers,
-                "prediction_json": prediction,
-                "cluster": cluster,
-            }
-        )
-        st.session_state["last_local_sql_error"] = None
+        client = get_required_supabase_client()
+        client.table("daily_inputs").insert({"user_id": user_id, "input_date": today_value, "submitted_at": submitted_at, "answers_json": answers, "prediction_json": prediction, "cluster": cluster}).execute()
+        st.session_state["last_data_save_error"] = None
+        st.session_state["last_supabase_sync_error"] = None
         return True, ""
-    except sqlite3.IntegrityError:
-        return False, "You have already submitted today's input. Please come back tomorrow."
     except Exception as exc:
-        st.session_state["last_local_sql_error"] = f"daily_inputs local save failed: {exc}"
+        error_text = str(exc).lower()
+        if "duplicate" in error_text or "unique" in error_text:
+            return False, "You have already submitted today's input. Please come back tomorrow."
+        st.session_state["last_data_save_error"] = f"daily_inputs save failed: {exc}"
+        st.session_state["last_supabase_sync_error"] = f"daily_inputs save failed: {exc}"
         return False, "Unable to save your daily input right now."
-
 
 def has_user_submitted_today(user_id: str) -> bool:
     """Check whether user already submitted daily survey today."""
     today_value = date.today().isoformat()
-    with get_db_connection() as connection:
-        cursor = connection.cursor()
-        cursor.execute(
-            """
-            SELECT 1
-            FROM daily_inputs
-            WHERE user_id = ? AND input_date = ?
-            LIMIT 1
-            """,
-            (user_id, today_value),
+    try:
+        client = get_required_supabase_client()
+        response = (
+            client.table("daily_inputs")
+            .select("entry_id")
+            .eq("user_id", user_id)
+            .eq("input_date", today_value)
+            .limit(1)
+            .execute()
         )
-        return cursor.fetchone() is not None
+        return bool(response.data)
+    except Exception:
+        return False
 
 
-def upsert_daily_feedback(
-    user_id: str,
-    input_date: str,
-    recommendation_followed: Optional[bool],
-    recommendation_helpful: Optional[bool],
-    feedback_rating: Optional[int],
-    app_feedback: str,
-) -> tuple[bool, str]:
+def upsert_daily_feedback(user_id: str, input_date: str, recommendation_followed: Optional[bool], recommendation_helpful: Optional[bool], feedback_rating: Optional[int], app_feedback: str) -> tuple[bool, str]:
     """Create or update per-day recommendation/app feedback for a user."""
     try:
-        with get_db_connection() as connection:
-            connection.execute(
-                """
-                INSERT INTO daily_feedback (
-                    user_id, input_date, recommendation_followed,
-                    recommendation_helpful, feedback_rating, app_feedback, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(user_id, input_date) DO UPDATE SET
-                    recommendation_followed = excluded.recommendation_followed,
-                    recommendation_helpful = excluded.recommendation_helpful,
-                    feedback_rating = excluded.feedback_rating,
-                    app_feedback = excluded.app_feedback,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (
-                    user_id,
-                    input_date,
-                    None if recommendation_followed is None else int(recommendation_followed),
-                    None if recommendation_helpful is None else int(recommendation_helpful),
-                    feedback_rating,
-                    app_feedback.strip() or None,
-                ),
-            )
-            connection.commit()
+        client = get_required_supabase_client()
+        client.table("daily_feedback").upsert(
+            {
+                "user_id": user_id,
+                "input_date": input_date,
+                "recommendation_followed": None if recommendation_followed is None else int(recommendation_followed),
+                "recommendation_helpful": None if recommendation_helpful is None else int(recommendation_helpful),
+                "feedback_rating": feedback_rating,
+                "app_feedback": app_feedback.strip() or None,
+            },
+            on_conflict="user_id,input_date",
+        ).execute()
+        st.session_state["last_supabase_sync_error"] = None
         return True, ""
-    except Exception:
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"daily_feedback save failed: {exc}"
         return False, "Unable to save feedback right now."
 
 
 def get_user_daily_history(user_id: str) -> pd.DataFrame:
     """Fetch a user's day-by-day survey history with optional feedback."""
-    with get_db_connection() as connection:
-        history_df = pd.read_sql_query(
-            """
-            SELECT
-                d.entry_id,
-                d.user_id,
-                d.input_date,
-                d.submitted_at,
-                d.prediction_json,
-                d.cluster,
-                f.recommendation_followed,
-                f.recommendation_helpful,
-                f.feedback_rating,
-                f.app_feedback
-            FROM daily_inputs d
-            LEFT JOIN daily_feedback f
-              ON d.user_id = f.user_id
-             AND d.input_date = f.input_date
-            WHERE d.user_id = ?
-            ORDER BY d.input_date ASC
-            """,
-            connection,
-            params=(user_id,),
+    try:
+        client = get_required_supabase_client()
+        daily_response = (
+            client.table("daily_inputs")
+            .select("entry_id,user_id,input_date,submitted_at,prediction_json,cluster")
+            .eq("user_id", user_id)
+            .order("input_date", desc=False)
+            .execute()
         )
+        feedback_response = (
+            client.table("daily_feedback")
+            .select("user_id,input_date,recommendation_followed,recommendation_helpful,feedback_rating,app_feedback")
+            .eq("user_id", user_id)
+            .execute()
+        )
+    except Exception:
+        return pd.DataFrame()
+
+    history_df = pd.DataFrame(daily_response.data or [])
 
     if history_df.empty:
         return history_df
+
+    feedback_df = pd.DataFrame(feedback_response.data or [])
+    if not feedback_df.empty:
+        history_df = history_df.merge(
+            feedback_df,
+            on=["user_id", "input_date"],
+            how="left",
+        )
+    else:
+        history_df["recommendation_followed"] = None
+        history_df["recommendation_helpful"] = None
+        history_df["feedback_rating"] = None
+        history_df["app_feedback"] = None
 
     parsed_predictions = history_df["prediction_json"].apply(parse_prediction_json)
     history_df["stress_level"] = parsed_predictions.apply(lambda p: p.get("stress_level"))
@@ -1229,11 +601,13 @@ def get_user_daily_history(user_id: str) -> pd.DataFrame:
     return history_df
 
 
-def parse_prediction_json(prediction_json: str) -> dict:
+def parse_prediction_json(prediction_json: Any) -> dict:
     """Safely parse prediction JSON payload."""
     try:
         if not prediction_json:
             return {}
+        if isinstance(prediction_json, dict):
+            return prediction_json
         parsed = json.loads(prediction_json)
         return parsed if isinstance(parsed, dict) else {}
     except Exception:
@@ -1242,50 +616,40 @@ def parse_prediction_json(prediction_json: str) -> dict:
 
 def get_admin_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Fetch users and daily input records for admin view."""
-    with get_db_connection() as connection:
-        users_df = pd.read_sql_query(
-            """
-            SELECT
-                u.user_id,
-                u.first_name,
-                u.last_name,
-                u.email,
-                u.phone_number,
-                u.city,
-                u.zip_code,
-                u.created_at,
-                COUNT(d.entry_id) AS total_entries,
-                MAX(d.input_date) AS last_input_date
-            FROM users u
-            LEFT JOIN daily_inputs d ON u.user_id = d.user_id
-            GROUP BY
-                u.user_id,
-                u.first_name,
-                u.last_name,
-                u.email,
-                u.phone_number,
-                u.city,
-                u.zip_code,
-                u.created_at
-            ORDER BY u.created_at DESC
-            """,
-            connection,
+    try:
+        client = get_required_supabase_client()
+        users_response = (
+            client.table("users")
+            .select("user_id,first_name,last_name,email,phone_number,city,zip_code,created_at")
+            .order("created_at", desc=True)
+            .execute()
         )
+        daily_response = (
+            client.table("daily_inputs")
+            .select("entry_id,user_id,input_date,submitted_at,prediction_json,cluster")
+            .order("submitted_at", desc=True)
+            .execute()
+        )
+    except Exception:
+        return pd.DataFrame(), pd.DataFrame()
 
-        daily_df = pd.read_sql_query(
-            """
-            SELECT
-                entry_id,
-                user_id,
-                input_date,
-                submitted_at,
-                prediction_json,
-                cluster
-            FROM daily_inputs
-            ORDER BY submitted_at DESC
-            """,
-            connection,
+    users_df = pd.DataFrame(users_response.data or [])
+    daily_df = pd.DataFrame(daily_response.data or [])
+
+    if users_df.empty:
+        users_df = pd.DataFrame(columns=[
+            "user_id", "first_name", "last_name", "email", "phone_number", "city", "zip_code", "created_at", "total_entries", "last_input_date"
+        ])
+    if daily_df.empty:
+        daily_df = pd.DataFrame(columns=["entry_id", "user_id", "input_date", "submitted_at", "prediction_json", "cluster"])
+    else:
+        aggregates = (
+            daily_df.groupby("user_id", as_index=False)
+            .agg(total_entries=("entry_id", "count"), last_input_date=("input_date", "max"))
         )
+        users_df = users_df.merge(aggregates, on="user_id", how="left")
+
+    users_df["total_entries"] = users_df["total_entries"].fillna(0).astype(int)
 
     if not daily_df.empty:
         parsed_predictions = daily_df["prediction_json"].apply(parse_prediction_json)
@@ -1295,10 +659,7 @@ def get_admin_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     return users_df, daily_df
 
-
-# ==============================
 # UI renderers and app navigation
-# ==============================
 def render_admin_page() -> None:
     """Render a simple admin page for users and daily trends."""
     st.markdown("<div class='content-placeholder'>", unsafe_allow_html=True)
@@ -1327,18 +688,7 @@ def render_admin_page() -> None:
         users_display = users_df[[
             "first_name", "last_name", "email", "phone_number", "city", "zip_code", "total_entries", "last_input_date"
         ]].copy()
-        users_display = users_display.rename(
-            columns={
-                "first_name": "First Name",
-                "last_name": "Last Name",
-                "email": "Email",
-                "phone_number": "Phone",
-                "city": "City",
-                "zip_code": "ZIP",
-                "total_entries": "Entries",
-                "last_input_date": "Last Input Date",
-            }
-        )
+        users_display = users_display.rename(columns={"first_name": "First Name", "last_name": "Last Name", "email": "Email", "phone_number": "Phone", "city": "City", "zip_code": "ZIP", "total_entries": "Entries", "last_input_date": "Last Input Date"})
         st.dataframe(users_display, hide_index=True)
 
     st.markdown("#### 📈 Daily Trend")
@@ -1477,7 +827,7 @@ def initialize_state() -> None:
         "current_user_id": None,
         "current_user_email": None,
         "current_user_name": None,
-        "last_local_sql_error": None,
+        "last_data_save_error": None,
         "last_supabase_sync_error": None,
         "supabase_sync_temporarily_disabled": False,
     }
@@ -1939,44 +1289,40 @@ def main():
             if not all_required_answered(answers, required_fields):
                 st.warning("⚠️ Please answer all questions first!")
             else:
-                stress_level = predict_stress_level(answers)
-                wellbeing_pct = 70.0 if stress_level <= 2 else 50.0 if stress_level <= 4 else 30.0
-                
-                if stress_level <= 1:
-                    cluster = 0
-                elif stress_level <= 3:
-                    cluster = 1
-                else:
-                    cluster = 2
-                
-                anxiety_score = min(100, max(0, wellbeing_pct - (stress_level * 8)))
-                depression_score = max(0, 100 - wellbeing_pct)
-                
-                prediction = {
-                    "stress_level": stress_level,
-                    "mental_health_pct": wellbeing_pct,
-                    "anxiety_score": anxiety_score,
-                    "depression_score": depression_score,
-                }
-                
-                st.session_state["last_prediction"] = prediction
-                st.session_state["last_cluster"] = cluster
-                st.session_state["show_results"] = True
-                
-                save_user_response_to_json(answers, prediction, cluster)
-                if st.session_state.get("current_user_id"):
-                    saved_to_sql, save_message = save_user_daily_input_to_sql(
-                        user_id=st.session_state.get("current_user_id"),
-                        answers=answers,
-                        prediction=prediction,
-                        cluster=cluster,
-                    )
-                    if saved_to_sql:
-                        st.success("✅ Daily input saved to local database.")
+                try:
+                    from pathlib import Path
+                    from scripts.integrated_model_inference import integrated_predict
+
+                    integrated_output = integrated_predict(answers, Path(APP_DIR))
+                    baseline_output = integrated_output.get("baseline_multinomial", {})
+                    kmeans_output = integrated_output.get("unsupervised_kmeans", {})
+                    cluster = int(kmeans_output.get("cluster", 0))
+
+                    prediction = {
+                        "baseline_multinomial": baseline_output,
+                        "unsupervised_kmeans": kmeans_output,
+                    }
+
+                    st.session_state["last_prediction"] = prediction
+                    st.session_state["last_cluster"] = cluster
+                    st.session_state["show_results"] = True
+
+                    save_user_response_to_json(answers, prediction, cluster)
+                    if st.session_state.get("current_user_id"):
+                        saved_to_sql, save_message = save_user_daily_input_to_sql(
+                            user_id=st.session_state.get("current_user_id"),
+                            answers=answers,
+                            prediction=prediction,
+                            cluster=cluster,
+                        )
+                        if saved_to_sql:
+                            st.success("✅ Daily input saved to local database.")
+                        else:
+                            st.warning(f"⚠️ {save_message}")
                     else:
-                        st.warning(f"⚠️ {save_message}")
-                else:
-                    st.info("ℹ️ Log in to save daily inputs to your account history.")
+                        st.info("ℹ️ Log in to save daily inputs to your account history.")
+                except Exception as exc:
+                    st.warning(f"⚠️ Unable to run baseline + KMeans inference: {exc}")
 
         if st.button("🔄 Start New Assessment", key="reset_assessment_btn", width="stretch"):
             reset_survey_state()
@@ -1989,65 +1335,17 @@ def main():
             
             prediction = st.session_state.get("last_prediction")
             
-            st.markdown("<h3 style='text-align: center;'>📊 Your Wellness Assessment</h3>", unsafe_allow_html=True)
-            
-            # Gauge Charts
-            col_gauge1, col_gauge2 = st.columns(2)
-            
-            with col_gauge1:
-                fig_stress = go.Figure(go.Indicator(
-                    mode="gauge+number",
-                    value=prediction["stress_level"],
-                    title={"text": "Stress Level (0-5)"},
-                    gauge={
-                        "axis": {"range": [0, 5]},
-                        "bar": {"color": "#9B7FB5"},
-                        "steps": [
-                            {"range": [0, 1.67], "color": "#b7e4c7"},
-                            {"range": [1.67, 3.33], "color": "#ffe066"},
-                            {"range": [3.33, 5], "color": "#ff6f69"},
-                        ],
-                    },
-                ))
-                fig_stress.update_layout(height=350, margin=dict(l=20, r=20, t=50, b=20))
-                st.plotly_chart(fig_stress, width="stretch")
-            
-            with col_gauge2:
-                wellbeing_value = 100 - (prediction["stress_level"] * 20)
-                fig_wellbeing = go.Figure(go.Indicator(
-                    mode="gauge+number",
-                    value=wellbeing_value,
-                    title={"text": "Wellbeing (%)"},
-                    gauge={
-                        "axis": {"range": [0, 100]},
-                        "bar": {"color": "#5B7FEA"},
-                        "steps": [
-                            {"range": [0, 33], "color": "#ffcccc"},
-                            {"range": [33, 66], "color": "#fff4cc"},
-                            {"range": [66, 100], "color": "#ccffcc"},
-                        ],
-                    },
-                ))
-                fig_wellbeing.update_layout(height=350, margin=dict(l=20, r=20, t=50, b=20))
-                st.plotly_chart(fig_wellbeing, width="stretch")
-            
-            # Metric Cards
-            col_metrics = st.columns(3)
-            with col_metrics[0]:
-                st.metric("Stress", f"{prediction['stress_level']}/5", "0.5")
-            with col_metrics[1]:
-                st.metric("Anxiety", f"{prediction['anxiety_score']:.0f}%", "5%")
-            with col_metrics[2]:
-                st.metric("Depression", f"{prediction['depression_score']:.0f}%", "3%")
-            
-            # Recommendations
-            st.markdown("#### 💡 Recommendations")
-            
-            if prediction["stress_level"] >= 4:
-                st.warning("⚠️ Your stress levels are high. Please consider reaching out to a counselor.")
-                st.write("Immediate actions: Take deep breaths, talk to someone you trust, practice meditation.")
-            else:
-                st.success("✅ Your stress levels are manageable. Keep maintaining healthy habits!")
+            st.markdown("<h3 style='text-align: center;'>📊 Baseline + KMeans Output</h3>", unsafe_allow_html=True)
+            baseline_output = prediction.get("baseline_multinomial", {}) if isinstance(prediction, dict) else {}
+            kmeans_output = prediction.get("unsupervised_kmeans", {}) if isinstance(prediction, dict) else {}
+
+            col_model_1, col_model_2 = st.columns(2)
+            with col_model_1:
+                st.markdown("#### Baseline Model")
+                st.json(baseline_output)
+            with col_model_2:
+                st.markdown("#### KMeans Model")
+                st.json(kmeans_output)
             
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -2081,9 +1379,9 @@ def main():
                 st.session_state["current_user_name"] = None
                 st.rerun()
             st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-            st.markdown("<div class='auth-subtext'>Daily SQL history enabled</div>", unsafe_allow_html=True)
-            if st.session_state.get("last_local_sql_error"):
-                st.caption(f"Local SQL note: {st.session_state.get('last_local_sql_error')}")
+            st.markdown("<div class='auth-subtext'>Supabase history enabled</div>", unsafe_allow_html=True)
+            if st.session_state.get("last_data_save_error"):
+                st.caption(f"Data save note: {st.session_state.get('last_data_save_error')}")
             if st.session_state.get("last_supabase_sync_error"):
                 st.caption(f"Supabase sync note: {st.session_state.get('last_supabase_sync_error')}")
         else:
