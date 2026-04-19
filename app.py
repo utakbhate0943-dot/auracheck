@@ -386,6 +386,9 @@ def create_user(first_name: str, last_name: str, email: str, password: str, phon
         return True, user_id
     except Exception as exc:
         st.session_state["last_supabase_sync_error"] = f"users create failed: {exc}"
+        error_text = str(exc).lower()
+        if "row-level security" in error_text or "rls" in error_text:
+            return False, "Signup is blocked by Supabase row-level security on the users table. Add an insert policy for anonymous signups or use a service role key."
         if "duplicate" in str(exc).lower() or "unique" in str(exc).lower():
             return False, "A user with this email already exists."
         return False, "Unable to create account right now. Please try again."
@@ -405,8 +408,10 @@ def authenticate_user(email: str, password: str) -> tuple[bool, Optional[dict], 
         )
         rows = response.data or []
         row = rows[0] if rows else None
-    except Exception:
-        return False, None, "Login service is currently unavailable."
+    except Exception as exc:
+        if is_dns_resolution_error(exc):
+            return False, None, "Login service is unavailable because Supabase host resolution failed. Check your network connection."
+        return False, None, f"Login service error: {exc}"
 
     if not row:
         return False, None, "No account found with this email."
