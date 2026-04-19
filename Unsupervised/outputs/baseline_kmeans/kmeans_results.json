@@ -1,0 +1,54 @@
+{
+  "dataset": "Dataset/students_mental_health_survey_with_burnout_final.csv",
+  "n_rows": 10000,
+  "n_features_used": 17,
+  "n_numeric_features": 4,
+  "n_categorical_features": 13,
+  "kmeans": {
+    "n_clusters": 4,
+    "random_state": 42,
+    "n_init": 20
+  },
+  "metrics_unsupervised": {
+    "silhouette": 0.057900992220927615,
+    "davies_bouldin": 3.0013607984983466,
+    "calinski_harabasz": 590.2787912494719
+  },
+  "alignment_to_burnout_labels": {
+    "adjusted_rand_index": -0.00017550380568647766,
+    "normalized_mutual_info": 0.00029983859910600154,
+    "cluster_to_burnout_class_mapping": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0
+    }
+  },
+  "metric_explanations": {
+    "silhouette": "Measures how well-separated clusters are. Range is -1 to 1; higher is better.",
+    "davies_bouldin": "Measures average similarity between clusters. Lower is better.",
+    "calinski_harabasz": "Ratio of between-cluster separation to within-cluster compactness. Higher is better.",
+    "adjusted_rand_index": "Agreement between cluster assignments and true burnout quartiles (chance-adjusted). Higher is better; 1 is perfect.",
+    "normalized_mutual_info": "How much information clusters share with true burnout quartiles. Range is 0 to 1; higher is better."
+  },
+  "figure_explanations": {
+    "cluster_sizes.png": "Bar chart of number of students per cluster; useful to spot highly imbalanced clusters.",
+    "cluster_vs_burnout_heatmap.png": "Heatmap crossing discovered clusters with true burnout quartiles; highlights where clusters align or mix quartiles.",
+    "pca_clusters.png": "2D PCA projection colored by cluster label; gives a visual sense of separation/overlap in reduced space.",
+    "pca_true_burnout.png": "Same PCA projection colored by true burnout quartiles; compare against cluster-colored view to assess alignment.",
+    "elbow_plot.png": "Inertia vs k curve for k=2..10; look for an elbow where adding more clusters yields diminishing returns."
+  },
+  "outputs": {
+    "clustered_students_csv": "Unsupervised/outputs/baseline_kmeans/kmeans_clustered_students.csv",
+    "cluster_profile_summary_csv": "Unsupervised/outputs/baseline_kmeans/kmeans_cluster_profile_summary.csv",
+    "cluster_profile_categorical_csv": "Unsupervised/outputs/baseline_kmeans/kmeans_cluster_profile_categorical.csv",
+    "results_json": "Unsupervised/outputs/baseline_kmeans/kmeans_results.json",
+    "figures": {
+      "cluster_sizes": "Unsupervised/outputs/baseline_kmeans/figures/cluster_sizes.png",
+      "cluster_vs_burnout_heatmap": "Unsupervised/outputs/baseline_kmeans/figures/cluster_vs_burnout_heatmap.png",
+      "pca_clusters": "Unsupervised/outputs/baseline_kmeans/figures/pca_clusters.png",
+      "pca_true_burnout": "Unsupervised/outputs/baseline_kmeans/figures/pca_true_burnout.png",
+      "elbow_plot": "Unsupervised/outputs/baseline_kmeans/figures/elbow_plot.png"
+    }
+  }
+}
