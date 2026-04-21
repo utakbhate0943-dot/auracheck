@@ -96,10 +96,12 @@ All categorical features are encoded using fixed dictionaries to ensure consiste
 | **Relationship_Status** | In a Relationship=0, Married=1, Single=2 |
 | **Residence_Type** | Off-Campus=0, On-Campus=1, With Family=2 |
 
+**Note:** Only features that explicitly list `Unknown` in the table above have a dedicated `Unknown` category in the documented encoding map. For other categorical features, if a missing or otherwise unmapped value is imputed as `"Unknown"`, the baseline script falls back to the default encoded value `1`.
+
 ### Handling Missing Values
 
 - **Numeric columns:** Imputed with column median
-- **Categorical columns:** Imputed with "Unknown" (maps to a default encoding value)
+- **Categorical columns:** Missing values are imputed as `"Unknown"` before encoding. If `"Unknown"` is not explicitly defined in that feature's encoding map, the baseline script uses the default fallback encoding value `1` rather than a dedicated unknown-only code.
 
 ---
 
