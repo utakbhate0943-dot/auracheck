@@ -1,0 +1,153 @@
+{
+  "best_parameter": {
+    "n_estimators": 300,
+    "max_features": "log2",
+    "min_samples_split": 5,
+    "min_samples_leaf": 1,
+    "max_depth": null,
+    "random_state": 42
+  },
+  "output": {
+    "sample_predictions": [
+      {
+        "actual": 0,
+        "predicted": 2
+      },
+      {
+        "actual": 0,
+        "predicted": 2
+      },
+      {
+        "actual": 1,
+        "predicted": 2
+      },
+      {
+        "actual": 1,
+        "predicted": 0
+      },
+      {
+        "actual": 2,
+        "predicted": 1
+      },
+      {
+        "actual": 2,
+        "predicted": 1
+      },
+      {
+        "actual": 1,
+        "predicted": 0
+      },
+      {
+        "actual": 2,
+        "predicted": 2
+      },
+      {
+        "actual": 1,
+        "predicted": 0
+      },
+      {
+        "actual": 0,
+        "predicted": 1
+      },
+      {
+        "actual": 1,
+        "predicted": 2
+      },
+      {
+        "actual": 1,
+        "predicted": 2
+      },
+      {
+        "actual": 1,
+        "predicted": 2
+      },
+      {
+        "actual": 2,
+        "predicted": 2
+      },
+      {
+        "actual": 0,
+        "predicted": 1
+      },
+      {
+        "actual": 2,
+        "predicted": 0
+      },
+      {
+        "actual": 1,
+        "predicted": 2
+      },
+      {
+        "actual": 1,
+        "predicted": 2
+      },
+      {
+        "actual": 2,
+        "predicted": 2
+      },
+      {
+        "actual": 1,
+        "predicted": 2
+      }
+    ],
+    "total_predictions": 2000,
+    "accuracy": 0.491
+  },
+  "evaluation_matrix": {
+    "0": {
+      "precision": 0.14207650273224043,
+      "recall": 0.12037037037037036,
+      "f1-score": 0.13032581453634084,
+      "support": 216.0
+    },
+    "1": {
+      "precision": 0.29930394431554525,
+      "recall": 0.21287128712871287,
+      "f1-score": 0.24879459980713597,
+      "support": 606.0
+    },
+    "2": {
+      "precision": 0.5966810966810967,
+      "recall": 0.702037351443124,
+      "f1-score": 0.6450858034321373,
+      "support": 1178.0
+    },
+    "accuracy": 0.491,
+    "macro avg": {
+      "precision": 0.34602051457629407,
+      "recall": 0.34509300298073575,
+      "f1-score": 0.3414020725918714,
+      "support": 2000.0
+    },
+    "weighted avg": {
+      "precision": 0.45747852336785816,
+      "recall": 0.491,
+      "f1-score": 0.46941548993301585,
+      "support": 2000.0
+    }
+  },
+  "confusion_matrix": {
+    "labels": [
+      "low burnout",
+      "mid burnout",
+      "high burnout"
+    ],
+    "matrix": [
+      [
+        26,
+        45,
+        145
+      ],
+      [
+        63,
+        129,
+        414
+      ],
+      [
+        94,
+        257,
+        827
+      ]
+    ]
+  }
+}
