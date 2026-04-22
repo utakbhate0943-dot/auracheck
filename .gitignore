@@ -9,3 +9,5 @@ Dataset/user_responses.json
 Database/SUPABASE_SETUP_GUIDE.md
 .env
 env
+random_forest_inference_bundle.joblib
+ml_randomforest/outputs/random_forest_inference_bundle.joblib

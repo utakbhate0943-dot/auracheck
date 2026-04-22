@@ -14,6 +14,7 @@ import hmac
 from datetime import date, datetime
 from typing import Any, Optional
 from urllib.parse import urlparse
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -27,10 +28,26 @@ load_dotenv(override=True)
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "utakbhate0943@sdsu.com").strip().lower()
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 USER_RESPONSES_JSON_PATH = os.path.join(APP_DIR, "Dataset", "user_responses.json")
+BASELINE_OUTPUT_DIR = os.path.join(APP_DIR, "baseline", "outputs", "final_baseline_model")
+BASELINE_METRICS_PATH = os.path.join(BASELINE_OUTPUT_DIR, "production_pruned_multinomial_metrics.csv")
+BASELINE_CM_PATH = os.path.join(BASELINE_OUTPUT_DIR, "final_selected_baseline_confusion_matrix.csv")
+BASELINE_SENS_SPEC_PATH = os.path.join(BASELINE_OUTPUT_DIR, "final_selected_baseline_sensitivity_specificity.csv")
+RF_SUMMARY_PATH = os.path.join(APP_DIR, "ml_randomforest", "outputs", "random_forest_outputs_summary.json")
+KMEANS_BASELINE_RESULTS_PATH = os.path.join(APP_DIR, "Unsupervised", "outputs", "baseline_kmeans", "kmeans_results.json")
+KMEANS_BENCHMARK_RESULTS_PATH = os.path.join(APP_DIR, "Unsupervised", "outputs", "kmeans_benchmark", "unsupervised_experiments_results.json")
 
 REQUIRED_FIELDS = ["Age", "Course", "Gender", "CGPA", "Sleep_Quality", "Physical_Activity", "Diet_Quality", "Social_Support", "Relationship", "Substance_Use", "Counseling", "Family_History", "Chronic_Illness", "Financial_Stress", "Extracurricular", "Semester", "Residence_Type"]
 POSITIVE_THOUGHTS = ["🌟 You are capable of overcoming challenges", "💚 Your mental health matters and deserves attention", "🌈 Every day is a fresh opportunity for growth", "💫 You have strength within you", "🌸 Self-care is not selfish, it's essential", "⭐ Progress over perfection always", "🎯 Your feelings are valid and important", "🌊 Challenges help you grow stronger", "💡 You deserve to be happy and healthy", "🦋 Transformation starts with self-compassion"]
-STATIC_USER_FIELDS = {"Age": "survey_age","Course": "survey_course","Gender": "survey_gender","Relationship": "survey_relationship","CGPA": "survey_cgpa"}
+STATIC_USER_FIELDS = {
+    "Age": "survey_age",
+    "Course": "survey_course",
+    "Gender": "survey_gender",
+    "CGPA": "survey_cgpa",
+    "Relationship": "survey_relationship",
+    "Family_History": "survey_family_history",
+    "Semester": "survey_semester",
+    "Residence_Type": "survey_residence_type",
+}
 
 def normalize_supabase_url(url_value: str) -> str:
     """Normalize Supabase URL so env variants do not break client setup."""
@@ -45,191 +62,358 @@ st.set_page_config(page_title="AuraCheck", page_icon="💜", layout="wide")
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700&display=swap');
-    :root {
-        --purple-1: #9B7FB5;
-        --purple-2: #8B6FA5;
-        --purple-3: #705291;
-        --ink-1: #3F2456;
-        --ink-2: #5A3D79;
-        --blue-1: #355DCB;
-        --blue-2: #234AAE;
-    }
-    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    .stApp { background: linear-gradient(135deg, #E3D7F2 0%, #ECE0F7 50%, #DDCFEC 100%); min-height: 100vh; padding: 4px 10px; }
-    .main .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-    .main {background: linear-gradient(135deg, rgba(248,244,253,.95) 0%, rgba(244,238,251,.95) 50%, rgba(239,232,248,.95) 100%);
-        border-radius: 40px; padding: 0; margin: 12px auto; max-width: 750px; width: 100%; overflow: hidden;
-        border: 5px solid var(--purple-3);
-        box-shadow: 0 35px 100px rgba(124,91,166,.3), 0 15px 50px rgba(155,127,181,.25), inset 0 1px 0 rgba(255,255,255,.7);}
-    h1, h2 { text-align: center; }
-    h1 { color: var(--ink-1); font-size: 40px; margin: 8px 0 4px; font-weight: 800; font-family: 'Poppins', sans-serif; letter-spacing: -0.8px; line-height: 1.1; }
-    h2 { color: var(--ink-2); font-size: 18px; font-weight: 500; margin: 0 0 14px; letter-spacing: 0.3px; }
-    h3 { color: var(--ink-1); font-family: 'Poppins', sans-serif; font-size: 24px; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.3px; }
-    h4 { color: #3D2C55; font-size: 18px; font-weight: 600; margin-bottom: 15px; }
-    p, span, label { color: #352549; font-weight: 500; line-height: 1.6; }
-
-    .header-section { padding: 30px 28px 16px; text-align: center; }
-    .questions-section, .results-section { padding: 18px 28px; background: transparent; }
-    .analyze-section { padding: 14px 28px; text-align: center; }
-    .footer-section { padding: 18px 28px 22px; border-radius: 0 0 30px 30px; }
-
-    .question-text { text-align: center; color: #2F2142; font-size: 20px; margin: 14px 0 18px; font-weight: 600; letter-spacing: 0.15px; line-height: 1.4; }
-    .progress-text { text-align: center; color: var(--ink-2); font-size: 13px; font-weight: 600; margin-top: 8px; letter-spacing: 0.4px; }
-    .stProgress { background-color: rgba(155,127,181,.15) !important; border-radius: 12px; margin-bottom: 12px; height: 8px; }
-    .stProgress > div > div > div > div { background: linear-gradient(90deg, var(--purple-1) 0%, var(--purple-2) 100%) !important; border-radius: 12px; height: 8px; }
-    hr { border: none; margin: 0; display: none !important; }
-
-    .stButton { animation: slideUp 0.5s ease-out; }
-    .stButton > button {width: 100%; border-radius: 18px; padding: 12px 18px; font-size: 15px; font-weight: 600; margin-bottom: 8px;
-        border: 3px solid var(--blue-1) !important; background: #FFF !important; color: #1F3F9F !important;
-        letter-spacing: 0.4px; line-height: 1.5; transition: all .35s cubic-bezier(.4,0,.2,1);
-        box-shadow: 0 6px 16px rgba(53,93,203,.25), 0 2px 8px rgba(0,0,0,.12) !important;}
-    .stButton > button:hover {
-        background: linear-gradient(135deg, var(--blue-1) 0%, var(--blue-2) 100%) !important; color: #FFF !important;
-        transform: translateY(-4px); border-color: var(--blue-1) !important;
-        box-shadow: 0 16px 45px rgba(53,93,203,.45), 0 8px 20px rgba(0,0,0,.2) !important;
-    }
-    .stButton > button:active { transform: translateY(-2px); }
-    .analyze-btn { background: linear-gradient(135deg, var(--purple-1) 0%, var(--purple-2) 100%) !important; color: #FFF !important; border: 3px solid var(--purple-1) !important; font-size: 18px !important; padding: 20px 35px !important; }
-
-    .login-signup-container { display: flex; gap: 20px; justify-content: center; margin-top: 25px; }
-    .login-button, .signup-button { flex: 1; font-weight: 700 !important; }
-    .login-button { border: 3px solid #8B7BA8 !important; color: #8B7BA8 !important; background: #FFF !important; }
-    .signup-button { border: 3px solid var(--purple-1) !important; color: #FFF !important; background: linear-gradient(135deg, var(--purple-1) 0%, var(--purple-2) 100%) !important; }
-
-    .stTextInput label { color: #2F2142 !important; font-weight: 600 !important; }
-    .stTextInput input { color: #221532 !important; background: #FFF !important; border: 2px solid #6C4B92 !important; }
-    .stTextInput input::placeholder { color: #6A5A82 !important; }
-
-    [data-testid="metric-container"] {
-        background: linear-gradient(135deg, #F5F0FF 0%, #FAFBFF 100%);
-        border-radius: 18px; padding: 16px; border: 2px solid #D4C5E2;
-        box-shadow: 0 4px 12px rgba(155,127,181,.15);
-    }
-    [data-testid="stExpander"] {
-        border: 2px solid #D4C5E2 !important; border-radius: 14px !important;
-        background: linear-gradient(135deg, #FAFBFF 0%, #F5F8FF 100%) !important;
-    }
-    .card-style {
-        background: linear-gradient(135deg, #FFF 0%, #FAFBFF 100%);
-        border-radius: 16px; padding: 16px; border: 2px solid #E8DFF5; margin-bottom: 12px;
-        box-shadow: 0 4px 15px rgba(155,127,181,.1), 0 2px 8px rgba(0,0,0,.05);
-    }
-    .footer-text { text-align: center; color: #7A6B8F; font-size: 15px; margin-bottom: 12px; font-weight: 500; }
-
-    .content-placeholder {
-        background: linear-gradient(135deg, rgba(229,216,241,.82) 0%, rgba(222,208,236,.8) 50%, rgba(216,199,232,.84) 100%);
-        border-radius: 32px; position: relative; overflow: hidden; margin: 10px;
-    }
-    .content-placeholder::before {
-        content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
-        background: linear-gradient(45deg, transparent 25%, rgba(255,255,255,.12) 50%, transparent 75%);
-        animation: shimmer 3.5s infinite;
-    }
-    .content-placeholder > * { position: relative; z-index: 2; }
-
-    .left-section, .middle-section, .right-section { display: block; height: auto; min-height: 0; }
-    .left-section { text-align: center; }
-    .middle-section { padding: 22px 20px 26px; border-radius: 24px; min-width: 760px; max-width: 760px; margin: 0 auto; }
-    .middle-panel { background: #FFF; border: none; padding: 0; box-shadow: none; }
-    .right-section { background: transparent; border-radius: 20px; min-width: 300px; max-width: 300px; margin: 0 auto; }
-
-    .good-thoughts-header { color: #2D1A42; font-size: 20px; font-weight: 700; text-align: center; margin: 18px 0 10px; letter-spacing: 0.3px; font-family: 'Poppins', sans-serif; }
-    .good-thoughts-container { border-radius: 14px; padding: 8px 0; }
-    .thought-item {
-        color: #5B4B6F; font-size: 20px; font-weight: 700; text-align: center; line-height: 1.5;
-        padding: 12px; margin: 14px 0; border-radius: 10px; transition: all .6s ease;
-        background: rgba(155,127,181,.15); border: 1px solid rgba(155,127,181,.15);
-    }
-    .thought-item:hover { background: linear-gradient(135deg, rgba(155,127,181,.15) 0%, rgba(200,170,220,.15) 100%); border-color: rgba(155,127,181,.3); transform: translateY(-2px); }
-    .thought-animated-box { min-height: 90px; display: flex; align-items: center; justify-content: center; }
-
-    .left-section h1 { font-size: 46px; margin: 10px 0 6px; }
-    .left-section h2 { font-size: 26px; font-weight: 600; margin: 0 0 12px; }
-    .auth-header { color: var(--ink-1); font-size: 18px; font-weight: 700; text-align: center; margin: 0 0 10px; font-family: 'Poppins', sans-serif; }
-    .auth-subtext { color: #4D3468; font-size: 12px; text-align: center; line-height: 1.5; font-weight: 600; letter-spacing: 0.2px; }
-
-    @keyframes pulse { 0%,100% {opacity:1; transform:scale(1);} 50% {opacity:.8; transform:scale(1.06);} }
-    .logo, .logo img { animation: pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-    @keyframes slideUp { from {opacity:0; transform:translateY(20px);} to {opacity:1; transform:translateY(0);} }
-    @keyframes shimmer { 0% {transform:translateX(-150%);} 100% {transform:translateX(150%);} }
-
-    @media (max-width: 1200px) {
-        .left-section h1 { font-size: 44px; }
-        .left-section h2 { font-size: 24px; }
-        .thought-item { font-size: 17px; padding: 14px 12px; }
-        .good-thoughts-header { font-size: 20px; }
-        .middle-section, .right-section { min-width: auto; max-width: 100%; }
-    }
-    
 </style>
 """, unsafe_allow_html=True)
 
-def get_static_models():
-    """Return available trained model metadata (with safe fallback values)."""
+
+def load_json_file(path: str, default: Optional[dict] = None) -> dict:
+    """Load a JSON file with a safe fallback."""
+    if not os.path.exists(path):
+        return default if default is not None else {}
     try:
-        from pathlib import Path
-        from scripts.integrated_model_inference import (
-            build_or_load_kmeans_bundle,
-            load_baseline_assets,
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default if default is not None else {}
+
+
+def load_model_analysis_data() -> dict:
+    """Load comparison data for the model analysis page."""
+    baseline_metrics = {}
+    baseline_cm = pd.DataFrame()
+    baseline_sens_spec = pd.DataFrame()
+
+    if os.path.exists(BASELINE_METRICS_PATH):
+        baseline_metrics_df = pd.read_csv(BASELINE_METRICS_PATH)
+        if not baseline_metrics_df.empty:
+            baseline_metrics = baseline_metrics_df.iloc[0].to_dict()
+
+    if os.path.exists(BASELINE_CM_PATH):
+        baseline_cm = pd.read_csv(BASELINE_CM_PATH)
+
+    if os.path.exists(BASELINE_SENS_SPEC_PATH):
+        baseline_sens_spec = pd.read_csv(BASELINE_SENS_SPEC_PATH)
+
+    rf_summary = load_json_file(RF_SUMMARY_PATH, {})
+    kmeans_baseline = load_json_file(KMEANS_BASELINE_RESULTS_PATH, {})
+    kmeans_benchmark = load_json_file(KMEANS_BENCHMARK_RESULTS_PATH, {})
+
+    return {
+        "baseline": {
+            "metrics": baseline_metrics,
+            "confusion_matrix": baseline_cm,
+            "sensitivity_specificity": baseline_sens_spec,
+        },
+        "random_forest": rf_summary,
+        "kmeans_baseline": kmeans_baseline,
+        "kmeans_benchmark": kmeans_benchmark,
+    }
+
+
+def build_model_comparison_table(analysis_data: dict) -> pd.DataFrame:
+    """Build a compact comparison table for the three model families."""
+    baseline_metrics = analysis_data.get("baseline", {}).get("metrics", {})
+    rf_summary = analysis_data.get("random_forest", {})
+    rf_eval = rf_summary.get("evaluation_matrix", {}) if isinstance(rf_summary, dict) else {}
+    rf_output = rf_summary.get("output", {}) if isinstance(rf_summary, dict) else {}
+    kmeans_baseline = analysis_data.get("kmeans_baseline", {})
+    kmeans_benchmark = analysis_data.get("kmeans_benchmark", {})
+    kmeans_best = kmeans_benchmark.get("best_overall", {}) if isinstance(kmeans_benchmark, dict) else {}
+
+    rows = [
+        {
+            "Model": "Baseline multinomial logistic regression",
+            "Type": "Supervised baseline",
+            "Primary metric": float(baseline_metrics.get("Accuracy", 0.0)),
+            "Secondary metric": float(baseline_metrics.get("Macro_Recall", 0.0)),
+            "Notes": "Pruned 14-feature logistic regression; best for interpretability, weakest predictive lift.",
+        },
+        {
+            "Model": "Random forest (SMOTE + tuned trees)",
+            "Type": "Supervised candidate",
+            "Primary metric": float(rf_output.get("accuracy", 0.0)),
+            "Secondary metric": float(rf_eval.get("macro avg", {}).get("recall", 0.0)),
+            "Notes": "Best supervised accuracy in this project; non-linear model captures more structure.",
+        },
+        {
+            "Model": "KMeans baseline / benchmark",
+            "Type": "Unsupervised segmentation",
+            "Primary metric": float(kmeans_best.get("normalized_mutual_info", kmeans_baseline.get("alignment_to_burnout_labels", {}).get("normalized_mutual_info", 0.0))),
+            "Secondary metric": float(kmeans_best.get("silhouette", kmeans_baseline.get("metrics_unsupervised", {}).get("silhouette", 0.0))),
+            "Notes": "Useful for clustering/segmentation only; label alignment is near zero.",
+        },
+    ]
+    return pd.DataFrame(rows)
+
+
+def render_model_analysis_page() -> None:
+    """Render the model comparison and recommendation page."""
+    analysis_data = load_model_analysis_data()
+    baseline_metrics = analysis_data.get("baseline", {}).get("metrics", {})
+    baseline_cm = analysis_data.get("baseline", {}).get("confusion_matrix", pd.DataFrame())
+    baseline_sens_spec = analysis_data.get("baseline", {}).get("sensitivity_specificity", pd.DataFrame())
+    rf_summary = analysis_data.get("random_forest", {}) if isinstance(analysis_data.get("random_forest", {}), dict) else {}
+    rf_eval = rf_summary.get("evaluation_matrix", {})
+    rf_cm = rf_summary.get("confusion_matrix", {})
+    kmeans_baseline = analysis_data.get("kmeans_baseline", {})
+    kmeans_benchmark = analysis_data.get("kmeans_benchmark", {})
+    kmeans_best = kmeans_benchmark.get("best_overall", {}) if isinstance(kmeans_benchmark, dict) else {}
+
+    st.markdown("<div class='content-placeholder'>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+            .analysis-hero {
+                background: linear-gradient(120deg, rgba(53,93,203,0.16), rgba(155,127,181,0.22));
+                border: 2px solid rgba(53,93,203,0.25);
+                border-radius: 18px;
+                padding: 18px 20px;
+                margin: 8px 6px 14px;
+            }
+            .analysis-title {
+                color: #2A1940;
+                font-size: 30px;
+                font-weight: 800;
+                letter-spacing: 0.2px;
+                margin: 0 0 6px 0;
+            }
+            .analysis-subtitle {
+                color: #3C2A57;
+                font-size: 14px;
+                font-weight: 600;
+                margin: 0;
+            }
+            .analysis-pill-row {
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+                margin-top: 10px;
+            }
+            .analysis-pill {
+                border-radius: 999px;
+                padding: 6px 12px;
+                font-size: 12px;
+                font-weight: 700;
+            }
+            .analysis-pill-good { background: #E8F7EC; color: #1A6A37; border: 1px solid #9EDAB3; }
+            .analysis-pill-mid { background: #FFF6DD; color: #8A5A00; border: 1px solid #E6C778; }
+            .analysis-pill-risk { background: #FFE8EA; color: #8A1F2C; border: 1px solid #E7A9B1; }
+            .analysis-note {
+                border-radius: 14px;
+                padding: 12px 14px;
+                margin: 8px 0;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            .analysis-note-good { background: #EAF8EE; color: #195C34; border: 1px solid #9FD8B3; }
+            .analysis-note-warn { background: #FFF7E5; color: #7C5500; border: 1px solid #E7C46B; }
+            .analysis-note-risk { background: #FFEDEF; color: #7C1F2A; border: 1px solid #E6A8B0; }
+        </style>
+        <div class='analysis-hero'>
+            <p class='analysis-title'>Model Analysis and Recommendation</p>
+            <p class='analysis-subtitle'>Baseline logistic regression, random forest, and KMeans are compared using saved project outputs and evaluation artifacts.</p>
+            <div class='analysis-pill-row'>
+                <span class='analysis-pill analysis-pill-good'>Prediction Winner: Random Forest</span>
+                <span class='analysis-pill analysis-pill-mid'>Benchmark Model: Baseline</span>
+                <span class='analysis-pill analysis-pill-risk'>Exploration Only: KMeans</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.button("← Back to AuraCheck", key="analysis_back_to_main", width="stretch"):
+        st.session_state["auth_page"] = "main"
+        st.rerun()
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.metric("Baseline Accuracy", f"{float(baseline_metrics.get('Accuracy', 0.0)):.1%}")
+        st.caption("Pruned multinomial logistic regression")
+    with col_b:
+        st.metric("Random Forest Accuracy", f"{float(rf_summary.get('output', {}).get('accuracy', 0.0)):.1%}")
+        st.caption("SMOTE + 300-tree random forest")
+    with col_c:
+        st.metric("Best KMeans NMI", f"{float(kmeans_best.get('normalized_mutual_info', kmeans_baseline.get('alignment_to_burnout_labels', {}).get('normalized_mutual_info', 0.0))):.4f}")
+        st.caption("Unsupervised label alignment")
+
+    st.markdown(
+        """
+        <div class='analysis-note analysis-note-good'><strong>Strong signal:</strong> Random Forest consistently shows the best supervised predictive performance.</div>
+        <div class='analysis-note analysis-note-warn'><strong>Caution:</strong> Baseline remains important for explainability, but performance is limited.</div>
+        <div class='analysis-note analysis-note-risk'><strong>Constraint:</strong> KMeans alignment to true burnout classes is weak, so it should not drive final predictions.</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### How each model behaves")
+    insight_cols = st.columns(3)
+    with insight_cols[0]:
+        st.markdown(
+            """
+            <div class='card-style' style='border-left: 6px solid #C39A3A; padding: 18px;'>
+            <strong style='font-size:18px;'>Baseline model</strong><br/>
+            The baseline script uses a pruned multinomial logistic regression pipeline. It is easy to explain,
+            but the saved metrics show <strong>weaker predictive power</strong>, so it is best treated as a reference point.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with insight_cols[1]:
+        st.markdown(
+            """
+            <div class='card-style' style='border-left: 6px solid #2E8B57; padding: 18px;'>
+            <strong style='font-size:18px;'>Random Forest</strong><br/>
+            The random forest script adds non-linearity and uses SMOTE on the training split. That gave the
+            <strong>strongest supervised performance</strong> in this project and the most balanced class recovery overall.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with insight_cols[2]:
+        st.markdown(
+            """
+            <div class='card-style' style='border-left: 6px solid #A04857; padding: 18px;'>
+            <strong style='font-size:18px;'>KMeans</strong><br/>
+            KMeans is an exploratory segmentation tool, not a predictive classifier. Its internal clustering
+            metrics are modest and its alignment with burnout labels is <strong>near zero</strong>.
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-        project_root = Path(APP_DIR)
-        baseline_bundle, baseline_meta = load_baseline_assets(project_root)
-        kmeans_bundle = build_or_load_kmeans_bundle(project_root)
+    st.markdown("### Performance comparison")
+    comparison_df = build_model_comparison_table(analysis_data)
+    st.dataframe(comparison_df, use_container_width=True, hide_index=True)
 
-        baseline_metrics = baseline_meta.get("metrics", {}) if isinstance(baseline_meta, dict) else {}
-        baseline_accuracy = float(baseline_metrics.get("Accuracy", 0.0))
-        baseline_macro_recall = float(baseline_metrics.get("Macro_Recall", 0.0))
+    st.markdown("### Visual summary")
+    chart_cols = st.columns(2)
 
-        baseline_info = {
-            "feature_cols": baseline_meta.get("features", []),
-            "accuracy": baseline_accuracy,
-            "f1_score": baseline_macro_recall,
-            "class_names": baseline_meta.get("class_names", []),
-            "model_type": baseline_meta.get("model_type", "Multinomial Logistic Regression"),
-            "bundle_loaded": bool(baseline_bundle),
-        }
-        kmeans_info = {
-            "feature_cols": kmeans_bundle.get("feature_cols", []),
-            "n_clusters": int(getattr(kmeans_bundle.get("kmeans"), "n_clusters", 4)),
-            "cluster_mapping": kmeans_bundle.get("cluster_to_burnout_class", {}),
-        }
+    family_score_fig = go.Figure()
+    family_score_fig.add_trace(
+        go.Bar(
+            name="Primary score",
+            x=["Baseline", "Random Forest", "KMeans"],
+            y=[
+                float(baseline_metrics.get("Accuracy", 0.0)),
+                float(rf_summary.get("output", {}).get("accuracy", 0.0)),
+                float(kmeans_best.get("normalized_mutual_info", kmeans_baseline.get("alignment_to_burnout_labels", {}).get("normalized_mutual_info", 0.0))),
+            ],
+            marker_color=["#C39A3A", "#2E8B57", "#A04857"],
+        )
+    )
+    family_score_fig.update_layout(
+        title="Semantic Score Comparison (Amber=Benchmark, Green=Best, Red=Risk)",
+        yaxis_title="Score",
+        height=360,
+        margin=dict(l=20, r=20, t=50, b=20),
+    )
 
-        return {
-            "baseline_multinomial": baseline_info,
-            "kmeans": kmeans_info,
-            # Backward-compatible aliases used by earlier UI sections.
-            "logistic_regression": baseline_info,
-            "gradient_boosting": baseline_info,
-        }
-    except Exception:
-        return {
-            "baseline_multinomial": {
-                "feature_cols": REQUIRED_FIELDS,
-                "accuracy": 0.0,
-                "f1_score": 0.0,
-                "class_names": ["Very Low (Q1)", "Low (Q2)", "Moderate (Q3)", "High (Q4)"],
-                "model_type": "Unavailable",
-                "bundle_loaded": False,
-            },
-            "kmeans": {
-                "feature_cols": ["Sleep_Quality", "Physical_Activity", "CGPA", "Social_Support", "Counseling", "Financial_Stress"],
-                "n_clusters": 4,
-                "cluster_mapping": {},
-            },
-            "logistic_regression": {
-                "feature_cols": REQUIRED_FIELDS,
-                "accuracy": 0.0,
-                "f1_score": 0.0,
-            },
-            "gradient_boosting": {
-                "feature_cols": REQUIRED_FIELDS,
-                "accuracy": 0.0,
-                "f1_score": 0.0,
-            },
-        }
+    with chart_cols[0]:
+        st.plotly_chart(family_score_fig, use_container_width=True)
+
+    kmeans_metric_fig = go.Figure()
+    kmeans_metric_fig.add_trace(
+        go.Bar(
+            name="KMeans metrics (risk-focused)",
+            x=["Silhouette", "NMI", "ARI"],
+            y=[
+                float(kmeans_best.get("silhouette", kmeans_baseline.get("metrics_unsupervised", {}).get("silhouette", 0.0))),
+                float(kmeans_best.get("normalized_mutual_info", kmeans_baseline.get("alignment_to_burnout_labels", {}).get("normalized_mutual_info", 0.0))),
+                float(kmeans_best.get("adjusted_rand_index", kmeans_baseline.get("alignment_to_burnout_labels", {}).get("adjusted_rand_index", 0.0))),
+            ],
+            marker_color=["#C39A3A", "#A04857", "#A04857"],
+        )
+    )
+    kmeans_metric_fig.update_layout(
+        title="KMeans Quality Check (Amber=Partial, Red=Weak Alignment)",
+        yaxis_title="Score",
+        height=360,
+        margin=dict(l=20, r=20, t=50, b=20),
+    )
+
+    with chart_cols[1]:
+        st.plotly_chart(kmeans_metric_fig, use_container_width=True)
+
+    st.markdown("### Evaluation details")
+    eval_cols = st.columns(2)
+    with eval_cols[0]:
+        st.markdown("#### Baseline model metrics")
+        st.dataframe(pd.DataFrame([baseline_metrics]), use_container_width=True, hide_index=True)
+        if not baseline_sens_spec.empty:
+            st.dataframe(baseline_sens_spec, use_container_width=True, hide_index=True)
+        if not baseline_cm.empty:
+            st.dataframe(baseline_cm, use_container_width=True, hide_index=False)
+            baseline_heatmap = go.Figure(
+                data=go.Heatmap(
+                    z=baseline_cm.iloc[:, 1:].values if baseline_cm.shape[1] > 4 else baseline_cm.values,
+                    x=list(baseline_cm.columns[1:]) if baseline_cm.shape[1] > 4 else list(baseline_cm.columns),
+                    y=list(baseline_cm.iloc[:, 0]) if baseline_cm.shape[1] > 4 else list(baseline_cm.index),
+                    colorscale="YlOrBr",
+                    showscale=True,
+                )
+            )
+            baseline_heatmap.update_layout(
+                title="Baseline Confusion Matrix (Amber benchmark)",
+                height=360,
+                margin=dict(l=20, r=20, t=50, b=20),
+            )
+            st.plotly_chart(baseline_heatmap, use_container_width=True)
+    with eval_cols[1]:
+        st.markdown("#### Random Forest metrics")
+        rf_metrics_table = pd.DataFrame([{
+            "accuracy": float(rf_summary.get("output", {}).get("accuracy", 0.0)),
+            "macro_precision": float(rf_eval.get("macro avg", {}).get("precision", 0.0)),
+            "macro_recall": float(rf_eval.get("macro avg", {}).get("recall", 0.0)),
+            "macro_f1": float(rf_eval.get("macro avg", {}).get("f1-score", 0.0)),
+            "weighted_f1": float(rf_eval.get("weighted avg", {}).get("f1-score", 0.0)),
+            "total_predictions": int(rf_summary.get("output", {}).get("total_predictions", 0)),
+        }])
+        st.dataframe(rf_metrics_table, use_container_width=True, hide_index=True)
+        rf_cm_data = rf_cm.get("matrix", []) if isinstance(rf_cm, dict) else []
+        rf_labels = rf_cm.get("labels", []) if isinstance(rf_cm, dict) else []
+        if rf_cm_data:
+            st.dataframe(pd.DataFrame(rf_cm_data, index=rf_labels, columns=rf_labels), use_container_width=True)
+            rf_heatmap = go.Figure(
+                data=go.Heatmap(
+                    z=rf_cm_data,
+                    x=rf_labels,
+                    y=rf_labels,
+                    colorscale="Greens",
+                    showscale=True,
+                )
+            )
+            rf_heatmap.update_layout(
+                title="Random Forest Confusion Matrix (Green winner)",
+                height=360,
+                margin=dict(l=20, r=20, t=50, b=20),
+            )
+            st.plotly_chart(rf_heatmap, use_container_width=True)
+
+    st.markdown("### Recommendation")
+    st.markdown(
+        """
+        <div style='background: linear-gradient(120deg, #EAF8EE, #F5FFF8); border: 2px solid #9ED8B3; border-radius: 16px; padding: 16px 18px; margin-top: 4px;'>
+            <div style='font-size:18px; font-weight:800; color:#1C5C36; margin-bottom:8px;'>Recommended Production Model: Random Forest</div>
+            <div style='font-size:14px; font-weight:600; color:#2C3A3A; line-height:1.6;'>
+                Random Forest is the best choice for final predictive use because it gives the <strong>highest supervised accuracy</strong> and
+                <strong>better macro-level recall</strong> than the baseline model. Keep baseline logistic regression for interpretability checks,
+                and keep KMeans for exploratory segmentation only.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Code review notes"):
+        st.markdown(
+            "- Baseline script: pruned multinomial logistic regression, standard supervised baseline, low accuracy.\n"
+            "- Random forest code: 300 trees, `max_features='log2'`, `min_samples_split=5`, SMOTE on training only.\n"
+            "- KMeans code: unsupervised clustering; useful for grouping students, but not for predicting burnout labels directly.\n"
+            "- Best model choice: Random Forest for prediction; baseline for explanation; KMeans for segmentation."
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def get_question_for_field(field_name: str) -> str:
     """Get conversational question for a given field."""
@@ -401,7 +585,7 @@ def authenticate_user(email: str, password: str) -> tuple[bool, Optional[dict], 
         client = get_required_supabase_client()
         response = (
             client.table("users")
-            .select("user_id,first_name,last_name,email,password_hash,password_salt")
+            .select("user_id,first_name,last_name,email,phone_number,password_hash,password_salt")
             .eq("email", normalized_email)
             .limit(1)
             .execute()
@@ -424,6 +608,7 @@ def authenticate_user(email: str, password: str) -> tuple[bool, Optional[dict], 
         "first_name": str(row.get("first_name") or ""),
         "last_name": str(row.get("last_name") or ""),
         "email": str(row.get("email") or ""),
+        "phone_number": str(row.get("phone_number") or ""),
     }
     expected_hash = str(row.get("password_hash") or "")
     password_salt = str(row.get("password_salt") or "")
@@ -454,12 +639,12 @@ def upsert_profile(user_id: str, age: Optional[int], lifestyle_parameters: str, 
 
 
 def get_user_static_answers(user_id: str) -> dict:
-    """Return saved baseline answers (age/course/gender) for a user, if present."""
+    """Return saved baseline answers for a user, if present."""
     try:
         client = get_required_supabase_client()
         response = (
             client.table("users")
-            .select("survey_age,survey_course,survey_gender")
+            .select("survey_age,survey_course,survey_gender,survey_cgpa,survey_relationship,survey_family_history,survey_semester,survey_residence_type")
             .eq("user_id", user_id)
             .limit(1)
             .execute()
@@ -472,7 +657,16 @@ def get_user_static_answers(user_id: str) -> dict:
     if not isinstance(row, dict):
         return {}
 
-    return {"Age": row.get("survey_age"),"Course": row.get("survey_course"),"Gender": row.get("survey_gender"),"Relationship": row.get("survey_relationship"),"CGPA": row.get("survey_cgpa")}
+    return {
+        "Age": row.get("survey_age"),
+        "Course": row.get("survey_course"),
+        "Gender": row.get("survey_gender"),
+        "CGPA": row.get("survey_cgpa"),
+        "Relationship": row.get("survey_relationship"),
+        "Family_History": row.get("survey_family_history"),
+        "Semester": row.get("survey_semester"),
+        "Residence_Type": row.get("survey_residence_type"),
+    }
 
 def save_user_static_answer_if_missing(user_id: str, field_name: str, field_value: str) -> None:
     """Persist first submitted baseline answer only once for the user."""
@@ -499,6 +693,49 @@ def save_user_static_answer_if_missing(user_id: str, field_name: str, field_valu
         client.table("users").update({column_name: value}).eq("user_id", user_id).execute()
     except Exception as exc:
         st.session_state["last_supabase_sync_error"] = f"users static answer update failed: {exc}"
+
+
+def save_user_static_answers(user_id: str, answers: dict) -> None:
+    """Persist editable static survey answers for a logged-in user."""
+    payload = {}
+    for field_name, column_name in STATIC_USER_FIELDS.items():
+        value = (answers.get(field_name) or "").strip()
+        if value:
+            payload[column_name] = value
+
+    if not payload:
+        return
+
+    try:
+        client = get_required_supabase_client()
+        client.table("users").update(payload).eq("user_id", user_id).execute()
+        st.session_state["last_supabase_sync_error"] = None
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"users static answers update failed: {exc}"
+
+
+def get_next_required_question(required_fields: list, answers: dict) -> Optional[str]:
+    """Return the first required survey field that is still unanswered."""
+    for field_name in required_fields:
+        value = answers.get(field_name)
+        if value is None:
+            return field_name
+        if isinstance(value, str) and not value.strip():
+            return field_name
+    return None
+
+
+def count_answered_required_fields(required_fields: list, answers: dict) -> int:
+    """Count answered required fields in the survey flow."""
+    answered_count = 0
+    for field_name in required_fields:
+        value = answers.get(field_name)
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        answered_count += 1
+    return answered_count
 
 
 def save_user_daily_input_to_sql(user_id: str, answers: dict, prediction: dict, cluster: int) -> tuple[bool, str]:
@@ -599,10 +836,12 @@ def get_user_daily_history(user_id: str) -> pd.DataFrame:
         history_df["app_feedback"] = None
 
     parsed_predictions = history_df["prediction_json"].apply(parse_prediction_json)
-    history_df["stress_level"] = parsed_predictions.apply(lambda p: p.get("stress_level"))
-    history_df["anxiety_score"] = parsed_predictions.apply(lambda p: p.get("anxiety_score"))
-    history_df["depression_score"] = parsed_predictions.apply(lambda p: p.get("depression_score"))
-    history_df["mental_health_pct"] = parsed_predictions.apply(lambda p: p.get("mental_health_pct"))
+    trend_metrics = parsed_predictions.apply(derive_trend_metrics_from_prediction)
+    history_df["predicted_class"] = parsed_predictions.apply(derive_prediction_class_from_prediction)
+    history_df["stress_level"] = trend_metrics.apply(lambda t: t.get("stress_level"))
+    history_df["anxiety_score"] = trend_metrics.apply(lambda t: t.get("anxiety_score"))
+    history_df["depression_score"] = trend_metrics.apply(lambda t: t.get("depression_score"))
+    history_df["mental_health_pct"] = trend_metrics.apply(lambda t: t.get("mental_health_pct"))
     return history_df
 
 
@@ -658,9 +897,10 @@ def get_admin_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     if not daily_df.empty:
         parsed_predictions = daily_df["prediction_json"].apply(parse_prediction_json)
-        daily_df["stress_level"] = parsed_predictions.apply(lambda p: p.get("stress_level"))
-        daily_df["anxiety_score"] = parsed_predictions.apply(lambda p: p.get("anxiety_score"))
-        daily_df["depression_score"] = parsed_predictions.apply(lambda p: p.get("depression_score"))
+        trend_metrics = parsed_predictions.apply(derive_trend_metrics_from_prediction)
+        daily_df["stress_level"] = trend_metrics.apply(lambda t: t.get("stress_level"))
+        daily_df["anxiety_score"] = trend_metrics.apply(lambda t: t.get("anxiety_score"))
+        daily_df["depression_score"] = trend_metrics.apply(lambda t: t.get("depression_score"))
 
     return users_df, daily_df
 
@@ -828,6 +1068,7 @@ def initialize_state() -> None:
         "last_prediction": None,
         "last_cluster": None,
         "show_results": False,
+        "result_model_choice": "Random Forest",
         "auth_page": "main",
         "current_user_id": None,
         "current_user_email": None,
@@ -849,83 +1090,224 @@ def reset_survey_state() -> None:
     st.session_state["show_results"] = False
 
 
+def get_selected_model_output(prediction: dict, selected_model: str) -> tuple[str, str, float, dict]:
+    """Return a display label, score label, score value, and details for the selected model."""
+    selected_key = (selected_model or "Random Forest").strip().lower()
+    if selected_key == "baseline":
+        baseline_output = prediction.get("baseline_multinomial", {}) if isinstance(prediction, dict) else {}
+        score = float(baseline_output.get("accuracy", 0.0))
+        return (
+            str(baseline_output.get("predicted_class", "N/A")),
+            "Accuracy %",
+            score,
+            baseline_output,
+        )
+    if selected_key in {"unsupervised", "kmeans", "k-means"}:
+        kmeans_output = prediction.get("unsupervised_kmeans", {}) if isinstance(prediction, dict) else {}
+        return (
+            str(kmeans_output.get("mapped_burnout_class", "N/A")),
+            "Cluster ID",
+            float(kmeans_output.get("cluster", 0)),
+            kmeans_output,
+        )
+
+    rf_output = prediction.get("random_forest", {}) if isinstance(prediction, dict) else {}
+    score = float(rf_output.get("accuracy", 0.0))
+    return (
+        str(rf_output.get("predicted_class", "N/A")),
+        "Accuracy %",
+        score,
+        rf_output,
+    )
+
+
+def compact_model_outputs(prediction_payload: dict) -> dict:
+    """Keep only model outputs for storage and rendering."""
+    if not isinstance(prediction_payload, dict):
+        return {}
+    return {
+        "baseline_multinomial": prediction_payload.get("baseline_multinomial", {}),
+        "random_forest": prediction_payload.get("random_forest", {}),
+        "unsupervised_kmeans": prediction_payload.get("unsupervised_kmeans", {}),
+    }
+
+
+def derive_trend_metrics_from_prediction(prediction_payload: dict) -> dict:
+    """Derive trend metrics from prediction payload (supports old and new schema)."""
+    if not isinstance(prediction_payload, dict):
+        return {
+            "stress_level": None,
+            "anxiety_score": None,
+            "depression_score": None,
+            "mental_health_pct": None,
+        }
+
+    # Backward compatibility with prior payload format.
+    if any(k in prediction_payload for k in ["stress_level", "anxiety_score", "depression_score", "mental_health_pct"]):
+        return {
+            "stress_level": prediction_payload.get("stress_level"),
+            "anxiety_score": prediction_payload.get("anxiety_score"),
+            "depression_score": prediction_payload.get("depression_score"),
+            "mental_health_pct": prediction_payload.get("mental_health_pct"),
+        }
+
+    rf_output = prediction_payload.get("random_forest", {}) if isinstance(prediction_payload.get("random_forest", {}), dict) else {}
+    probs = rf_output.get("probabilities", {}) if isinstance(rf_output.get("probabilities", {}), dict) else {}
+    low_prob = float(probs.get("low burnout", 0.0))
+    mid_prob = float(probs.get("mid burnout", 0.0))
+    high_prob = float(probs.get("high burnout", 0.0))
+
+    if (low_prob + mid_prob + high_prob) > 0:
+        stress_level = max(1.0, min(5.0, (low_prob * 2.0) + (mid_prob * 3.0) + (high_prob * 4.5)))
+        mental_health_pct = max(0.0, min(100.0, (low_prob * 90.0) + (mid_prob * 55.0) + (high_prob * 20.0)))
+        anxiety_score = max(0.0, min(100.0, (high_prob * 85.0) + (mid_prob * 55.0) + (low_prob * 25.0)))
+        depression_score = max(0.0, min(100.0, (high_prob * 80.0) + (mid_prob * 50.0) + (low_prob * 20.0)))
+        return {
+            "stress_level": float(round(stress_level, 2)),
+            "anxiety_score": float(round(anxiety_score, 2)),
+            "depression_score": float(round(depression_score, 2)),
+            "mental_health_pct": float(round(mental_health_pct, 2)),
+        }
+
+    # Fallback if probability dictionary is unavailable.
+    cls = str(rf_output.get("predicted_class", "")).strip().lower()
+    fallback_map = {
+        "low burnout": {"stress_level": 2.0, "anxiety_score": 30.0, "depression_score": 28.0, "mental_health_pct": 78.0},
+        "mid burnout": {"stress_level": 3.0, "anxiety_score": 55.0, "depression_score": 52.0, "mental_health_pct": 52.0},
+        "high burnout": {"stress_level": 4.2, "anxiety_score": 78.0, "depression_score": 76.0, "mental_health_pct": 24.0},
+    }
+    return fallback_map.get(
+        cls,
+        {"stress_level": None, "anxiety_score": None, "depression_score": None, "mental_health_pct": None},
+    )
+def derive_prediction_class_from_prediction(prediction_payload: dict) -> str:
+    """Return a human-readable predicted burnout class from the stored model outputs."""
+    if not isinstance(prediction_payload, dict):
+        return "Unknown"
+
+    rf_output = prediction_payload.get("random_forest", {}) if isinstance(prediction_payload.get("random_forest", {}), dict) else {}
+    class_label = str(rf_output.get("predicted_class", "")).strip()
+    if class_label:
+        return class_label
+
+    baseline_output = prediction_payload.get("baseline_multinomial", {}) if isinstance(prediction_payload.get("baseline_multinomial", {}), dict) else {}
+    class_label = str(baseline_output.get("predicted_class", "")).strip()
+    if class_label:
+        return class_label
+
+    kmeans_output = prediction_payload.get("unsupervised_kmeans", {}) if isinstance(prediction_payload.get("unsupervised_kmeans", {}), dict) else {}
+    class_label = str(kmeans_output.get("mapped_burnout_class", "")).strip()
+    return class_label or "Unknown"
+
+
+def normalize_prediction_class_label(class_label: str) -> str:
+    """Normalize class names so the history view can present a consistent progression scale."""
+    text = (class_label or "").strip().lower()
+    if not text:
+        return "Unknown"
+    if "very low" in text or "q1" in text:
+        return "Very Low Burnout"
+    if "low" in text or "q2" in text:
+        return "Low Burnout"
+    if "mid" in text or "moderate" in text or "q3" in text:
+        return "Mid Burnout"
+    if "high" in text or "q4" in text:
+        return "High Burnout"
+    return class_label
+
+
+def prediction_class_to_score(class_label: str) -> float:
+    """Map a burnout class label to an ordinal score for charting."""
+    normalized = normalize_prediction_class_label(class_label).lower()
+    if normalized == "very low burnout":
+        return 0.0
+    if normalized == "low burnout":
+        return 1.0
+    if normalized == "mid burnout":
+        return 2.0
+    if normalized == "high burnout":
+        return 3.0
+    return 1.5
+
+
 def render_user_progress_section(user_id: str) -> None:
-    """Render per-user day-by-day progress charts, insights, and feedback form."""
+    """Render per-user prediction-class history and feedback form."""
     history_df = get_user_daily_history(user_id)
 
-    st.markdown("#### 📈 Your Day-by-Day Progress")
+    st.markdown("#### 📈 Burnout Class History")
     if history_df.empty:
-        st.info("No saved daily history yet. Complete today's survey to start tracking progress.")
+        st.info("No saved daily history yet. Complete today's survey to start tracking burnout class changes.")
         return
 
-    trend_fig = go.Figure()
-    trend_fig.add_trace(
-        go.Scatter(
-            x=history_df["input_date"],
-            y=history_df["stress_level"],
-            mode="lines+markers",
-            name="Stress",
-            marker_color="#9B7FB5",
-            yaxis="y",
-        )
-    )
-    trend_fig.add_trace(
-        go.Scatter(
-            x=history_df["input_date"],
-            y=history_df["mental_health_pct"],
-            mode="lines+markers",
-            name="Mental Health %",
-            marker_color="#5B7FEA",
-            yaxis="y2",
-        )
-    )
-    trend_fig.update_layout(
-        xaxis_title="Date",
-        yaxis=dict(title="Stress", range=[0, 5]),
-        yaxis2=dict(title="Mental Health %", overlaying="y", side="right", range=[0, 100]),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        height=320,
-        margin=dict(l=20, r=20, t=30, b=20),
-    )
-    st.plotly_chart(trend_fig, width="stretch")
+    history_df = history_df.sort_values("input_date").copy()
+    history_df["predicted_class_display"] = history_df["predicted_class"].apply(normalize_prediction_class_label)
+    history_df["predicted_class_score"] = history_df["predicted_class_display"].apply(prediction_class_to_score)
 
     latest = history_df.iloc[-1]
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.metric("Latest Stress", f"{float(latest['stress_level']):.1f}/5" if pd.notna(latest["stress_level"]) else "N/A")
-    with col_b:
-        st.metric("Latest Mental Health", f"{float(latest['mental_health_pct']):.1f}%" if pd.notna(latest["mental_health_pct"]) else "N/A")
-    with col_c:
-        st.metric("Entries", str(len(history_df)))
+    latest_class = str(latest.get("predicted_class_display") or "Unknown")
 
-    if len(history_df) >= 2:
-        prev = history_df.iloc[-2]
-        stress_improvement = (float(prev["stress_level"]) - float(latest["stress_level"])) if pd.notna(prev["stress_level"]) and pd.notna(latest["stress_level"]) else 0.0
-        wellbeing_change = (float(latest["mental_health_pct"]) - float(prev["mental_health_pct"])) if pd.notna(prev["mental_health_pct"]) and pd.notna(latest["mental_health_pct"]) else 0.0
+    st.markdown(
+        f"""
+        <div class='analysis-note analysis-note-good'>
+            <strong>Latest predicted class:</strong> {latest_class}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-        if stress_improvement > 0:
-            st.success(f"✅ Improvement: stress improved by {stress_improvement:.1f} vs previous day.")
-        elif stress_improvement < 0:
-            st.warning(f"⚠️ Stress increased by {abs(stress_improvement):.1f} vs previous day.")
-        else:
-            st.info("ℹ️ Stress is unchanged vs previous day.")
+    class_colors = {
+        "Very Low Burnout": "#2E8B57",
+        "Low Burnout": "#C39A3A",
+        "Mid Burnout": "#A67C00",
+        "High Burnout": "#A04857",
+        "Unknown": "#7A6B8F",
+    }
 
-        if wellbeing_change > 0:
-            st.success(f"✅ Mental health score improved by {wellbeing_change:.1f}% vs previous day.")
-        elif wellbeing_change < 0:
-            st.warning(f"⚠️ Mental health score decreased by {abs(wellbeing_change):.1f}% vs previous day.")
+    class_fig = go.Figure()
+    class_fig.add_trace(
+        go.Scatter(
+            x=history_df["input_date"],
+            y=history_df["predicted_class_score"],
+            mode="lines+markers+text",
+            text=history_df["predicted_class_display"],
+            textposition="top center",
+            marker=dict(
+                size=12,
+                color=[class_colors.get(cls, "#7A6B8F") for cls in history_df["predicted_class_display"]],
+                line=dict(color="#FFFFFF", width=2),
+            ),
+            line=dict(color="#355DCB", width=3),
+            name="Predicted class",
+        )
+    )
+    class_fig.update_layout(
+        xaxis_title="Date",
+        yaxis=dict(
+            title="Burnout Class",
+            tickmode="array",
+            tickvals=[0, 1, 2, 3],
+            ticktext=["Very Low", "Low", "Mid", "High"],
+            range=[-0.3, 3.3],
+        ),
+        height=340,
+        margin=dict(l=20, r=20, t=30, b=20),
+        showlegend=False,
+    )
+    st.plotly_chart(class_fig, use_container_width=True)
 
-    effectiveness_df = history_df.dropna(subset=["recommendation_followed", "stress_level"])
-    if len(effectiveness_df) >= 3:
-        followed = effectiveness_df[effectiveness_df["recommendation_followed"] == 1]
-        not_followed = effectiveness_df[effectiveness_df["recommendation_followed"] == 0]
-        if not followed.empty and not not_followed.empty:
-            followed_avg = float(followed["stress_level"].mean())
-            not_followed_avg = float(not_followed["stress_level"].mean())
-            if followed_avg < not_followed_avg:
-                st.success("✅ Days marked as following recommendations show lower average stress.")
-            elif followed_avg > not_followed_avg:
-                st.info("ℹ️ Recommendation effect is not yet clear. Keep tracking daily for stronger signal.")
+    badge_html = ["<div style='display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 6px;'>"]
+    for _, row in history_df.iterrows():
+        cls = str(row.get("predicted_class_display") or "Unknown")
+        color = class_colors.get(cls, "#7A6B8F")
+        badge_html.append(
+            f"""
+            <div style='background:{color}; color:#FFFFFF; border-radius:999px; padding:8px 12px; font-size:12px; font-weight:700;'>
+                {row['input_date']} · {cls}
+            </div>
+            """
+        )
+    badge_html.append("</div>")
+    st.markdown("".join(badge_html), unsafe_allow_html=True)
 
     st.markdown("#### 📝 Recommendation & App Feedback")
     today_value = date.today().isoformat()
@@ -934,39 +1316,44 @@ def render_user_progress_section(user_id: str) -> None:
         st.info("Submit today's survey first, then share whether recommendations helped.")
     else:
         existing = today_row.iloc[-1]
+        followed_default = None if pd.isna(existing.get("recommendation_followed")) else bool(existing.get("recommendation_followed"))
+        helpful_default = None if pd.isna(existing.get("recommendation_helpful")) else bool(existing.get("recommendation_helpful"))
+        rating_default = None if pd.isna(existing.get("feedback_rating")) else int(existing.get("feedback_rating"))
+        feedback_default = str(existing.get("app_feedback") or "")
 
-        follow_default = "Not yet"
-        if pd.notna(existing.get("recommendation_followed")):
-            follow_default = "Yes" if int(existing["recommendation_followed"]) == 1 else "No"
+        if "history_feedback_form" not in st.session_state:
+            st.session_state["history_feedback_form"] = False
 
-        helpful_default = "Not sure"
-        if pd.notna(existing.get("recommendation_helpful")):
-            helpful_default = "Yes" if int(existing["recommendation_helpful"]) == 1 else "No"
-
-        rating_default = int(existing["feedback_rating"]) if pd.notna(existing.get("feedback_rating")) else 3
-        comment_default = str(existing["app_feedback"]) if pd.notna(existing.get("app_feedback")) else ""
-
-        with st.form("daily_feedback_form"):
-            followed_choice = st.radio(
-                "Did you follow today's recommendations?",
-                options=["Yes", "No", "Not yet"],
-                index=["Yes", "No", "Not yet"].index(follow_default),
+        with st.form("history_feedback_form"):
+            recommendation_followed = st.radio(
+                "Did you follow the recommendation?",
+                options=["Not sure", "Yes", "No"],
+                index=0 if followed_default is None else (1 if followed_default else 2),
                 horizontal=True,
             )
-            helpful_choice = st.radio(
-                "Are the recommendations helping?",
-                options=["Yes", "No", "Not sure"],
-                index=["Yes", "No", "Not sure"].index(helpful_default),
+            recommendation_helpful = st.radio(
+                "Was it helpful?",
+                options=["Not sure", "Yes", "No"],
+                index=0 if helpful_default is None else (1 if helpful_default else 2),
                 horizontal=True,
             )
-            feedback_rating = st.slider("App experience rating (1-5)", min_value=1, max_value=5, value=rating_default)
-            app_feedback = st.text_area("Feedback for app improvements", value=comment_default)
-            feedback_submit = st.form_submit_button("Save Feedback", width="stretch")
+            feedback_rating = st.slider(
+                "Overall app rating",
+                min_value=1,
+                max_value=5,
+                value=rating_default or 3,
+            )
+            app_feedback = st.text_area(
+                "Any feedback for AuraCheck?",
+                value=feedback_default,
+                height=110,
+            )
+            submitted = st.form_submit_button("Save feedback")
 
-        if feedback_submit:
-            followed_value = True if followed_choice == "Yes" else False if followed_choice == "No" else None
-            helpful_value = True if helpful_choice == "Yes" else False if helpful_choice == "No" else None
-            saved, message = upsert_daily_feedback(
+        if submitted:
+            followed_value = None if recommendation_followed == "Not sure" else recommendation_followed == "Yes"
+            helpful_value = None if recommendation_helpful == "Not sure" else recommendation_helpful == "Yes"
+            ok, msg = upsert_daily_feedback(
                 user_id=user_id,
                 input_date=today_value,
                 recommendation_followed=followed_value,
@@ -974,10 +1361,11 @@ def render_user_progress_section(user_id: str) -> None:
                 feedback_rating=feedback_rating,
                 app_feedback=app_feedback,
             )
-            if saved:
-                st.success("✅ Feedback saved. Thanks for helping improve AuraCheck.")
+            if ok:
+                st.success("Thanks! Your feedback has been saved.")
+                st.rerun()
             else:
-                st.warning(f"⚠️ {message}")
+                st.warning(msg)
 
 
 def is_admin_user() -> bool:
@@ -1066,6 +1454,7 @@ def render_auth_page(auth_page: str) -> None:
                     st.session_state["current_user_id"] = user_data["user_id"]
                     st.session_state["current_user_email"] = user_data["email"]
                     st.session_state["current_user_name"] = f"{user_data['first_name']} {user_data['last_name']}"
+                    st.session_state["current_user_phone_number"] = user_data.get("phone_number", "")
                     st.session_state["auth_page"] = "profile"
                     st.success("✅ Login successful.")
                     st.rerun()
@@ -1094,26 +1483,116 @@ def render_auth_page(auth_page: str) -> None:
         st.markdown("<h1 style='text-align: center;'>Profile</h1>", unsafe_allow_html=True)
         current_name = st.session_state.get("current_user_name") or "User"
         current_email = st.session_state.get("current_user_email") or ""
+        current_phone = st.session_state.get("current_user_phone_number") or ""
         current_user_id = st.session_state.get("current_user_id")
         st.markdown(f"<h2 style='text-align: center;'>Welcome, {current_name}</h2>", unsafe_allow_html=True)
         if current_email:
             st.markdown(f"<p style='text-align: center;'>Logged in as {current_email}</p>", unsafe_allow_html=True)
+        if current_phone:
+            st.markdown(f"<p style='text-align: center;'>Phone: {current_phone}</p>", unsafe_allow_html=True)
+
+        name_parts = current_name.split(" ", 1)
+        first_name_value = name_parts[0] if name_parts else ""
+        last_name_value = name_parts[1] if len(name_parts) > 1 else ""
+
+        st.markdown("#### Account Details")
+        account_col_1, account_col_2 = st.columns(2)
+        with account_col_1:
+            st.text_input("First Name", value=first_name_value, disabled=True)
+        with account_col_2:
+            st.text_input("Last Name", value=last_name_value, disabled=True)
+        detail_col_1, detail_col_2 = st.columns(2)
+        with detail_col_1:
+            st.text_input("Email", value=current_email, disabled=True)
+        with detail_col_2:
+            st.text_input("Phone Number", value=current_phone, disabled=True)
 
         saved_static_answers = get_user_static_answers(current_user_id) if current_user_id else {}
-        static_age = (saved_static_answers.get("Age") or "").strip()
-        static_course = (saved_static_answers.get("Course") or "").strip()
-        static_gender = (saved_static_answers.get("Gender") or "").strip()
+        static_profile_defaults = {
+            "Age": (saved_static_answers.get("Age") or "").strip(),
+            "Course": (saved_static_answers.get("Course") or "").strip(),
+            "Gender": (saved_static_answers.get("Gender") or "").strip(),
+            "CGPA": (saved_static_answers.get("CGPA") or "").strip(),
+            "Relationship": (saved_static_answers.get("Relationship") or "").strip(),
+            "Family_History": (saved_static_answers.get("Family_History") or "").strip(),
+            "Semester": (saved_static_answers.get("Semester") or "").strip(),
+            "Residence_Type": (saved_static_answers.get("Residence_Type") or "").strip(),
+        }
 
-        if static_age or static_course or static_gender:
-            st.markdown("#### Baseline Assessment Details")
-            st.caption("These values are reused automatically in future assessments.")
-            static_col_1, static_col_2, static_col_3 = st.columns(3)
-            with static_col_1:
-                st.text_input("Age", value=static_age or "Not set", disabled=True)
-            with static_col_2:
-                st.text_input("Course", value=static_course or "Not set", disabled=True)
-            with static_col_3:
-                st.text_input("Gender", value=static_gender or "Not set", disabled=True)
+        st.markdown("#### Personal Details")
+        st.caption("Your answers from survey assessments are saved here. Edit and save them whenever they change.")
+        
+        has_any_saved = any(static_profile_defaults.values())
+        if not has_any_saved:
+            st.info("📝 Complete your first survey to populate these details automatically.")
+        
+        with st.form("profile_static_answers_form"):
+            profile_col_1, profile_col_2 = st.columns(2)
+            
+            with profile_col_1:
+                st.markdown("**Your Saved Answers**")
+                age_value = st.text_input(
+                    "Age",
+                    value=static_profile_defaults["Age"],
+                    placeholder="e.g., 21-23"
+                )
+                gender_value = st.text_input(
+                    "Gender",
+                    value=static_profile_defaults["Gender"],
+                    placeholder="e.g., Female"
+                )
+                relationship_value = st.text_input(
+                    "Relationship",
+                    value=static_profile_defaults["Relationship"],
+                    placeholder="e.g., In a relationship"
+                )
+                semester_value = st.text_input(
+                    "Semester",
+                    value=static_profile_defaults["Semester"],
+                    placeholder="e.g., 18"
+                )
+            
+            with profile_col_2:
+                st.markdown("**Your Saved Answers**")
+                course_value = st.text_input(
+                    "Course",
+                    value=static_profile_defaults["Course"],
+                    placeholder="e.g., CS"
+                )
+                cgpa_value = st.text_input(
+                    "CGPA",
+                    value=static_profile_defaults["CGPA"],
+                    placeholder="e.g., 3.5-4.0"
+                )
+                family_history_value = st.text_input(
+                    "Family History",
+                    value=static_profile_defaults["Family_History"],
+                    placeholder="e.g., No"
+                )
+                residence_value = st.text_input(
+                    "Residence Type",
+                    value=static_profile_defaults["Residence_Type"],
+                    placeholder="e.g., Dorm"
+                )
+            
+            profile_save = st.form_submit_button("💾 Save profile details", width="stretch")
+
+        if profile_save and current_user_id:
+            save_user_static_answers(
+                current_user_id,
+                {
+                    "Age": age_value,
+                    "Course": course_value,
+                    "Gender": gender_value,
+                    "CGPA": cgpa_value,
+                    "Relationship": relationship_value,
+                    "Family_History": family_history_value,
+                    "Semester": semester_value,
+                    "Residence_Type": residence_value,
+                },
+            )
+            st.success("✅ Profile details saved.")
+            st.rerun()
 
         if st.button("Continue to AuraCheck", key="profile_to_main", width="stretch"):
             st.session_state["auth_page"] = "main"
@@ -1123,6 +1602,7 @@ def render_auth_page(auth_page: str) -> None:
             st.session_state["current_user_id"] = None
             st.session_state["current_user_email"] = None
             st.session_state["current_user_name"] = None
+            st.session_state["current_user_phone_number"] = None
             st.session_state["auth_page"] = "main"
             st.rerun()
 
@@ -1146,6 +1626,10 @@ def main():
 
     if st.session_state.get("auth_page") in {"signup", "login", "profile"}:
         render_auth_page(st.session_state.get("auth_page"))
+        return
+
+    if st.session_state.get("auth_page") == "model_analysis":
+        render_model_analysis_page()
         return
     
     # --- CONTENT PLACEHOLDER - Shiny purple background ---
@@ -1224,7 +1708,6 @@ def main():
         
         required_fields = REQUIRED_FIELDS
         
-        current_question_idx = len(st.session_state.get("last_answers", {}))
         answers = dict(st.session_state.get("last_answers", {}))
         current_user_id = st.session_state.get("current_user_id")
 
@@ -1238,7 +1721,8 @@ def main():
             if answers != st.session_state.get("last_answers", {}):
                 st.session_state["last_answers"] = answers
 
-        current_question_idx = len(answers)
+        current_question_idx = count_answered_required_fields(required_fields, answers)
+        next_required_field = get_next_required_question(required_fields, answers)
         already_submitted_today = bool(current_user_id and has_user_submitted_today(current_user_id))
 
         if already_submitted_today:
@@ -1253,8 +1737,8 @@ def main():
         # Questions Display
         st.markdown("<div class='questions-section'>", unsafe_allow_html=True)
         
-        if current_question_idx < len(required_fields) and not already_submitted_today:
-            current_field = required_fields[current_question_idx]
+        if next_required_field and not already_submitted_today:
+            current_field = next_required_field
             options = get_field_options(current_field)
             question = get_question_for_field(current_field)
             
@@ -1298,15 +1782,13 @@ def main():
                     from pathlib import Path
                     from scripts.integrated_model_inference import integrated_predict
 
-                    integrated_output = integrated_predict(answers, Path(APP_DIR))
-                    baseline_output = integrated_output.get("baseline_multinomial", {})
-                    kmeans_output = integrated_output.get("unsupervised_kmeans", {})
-                    cluster = int(kmeans_output.get("cluster", 0))
+                    if current_user_id:
+                        save_user_static_answers(current_user_id, answers)
 
-                    prediction = {
-                        "baseline_multinomial": baseline_output,
-                        "unsupervised_kmeans": kmeans_output,
-                    }
+                    integrated_output = integrated_predict(answers, Path(APP_DIR))
+                    cluster = int(integrated_output.get("unsupervised_kmeans", {}).get("cluster", 0))
+
+                    prediction = compact_model_outputs(integrated_output)
 
                     st.session_state["last_prediction"] = prediction
                     st.session_state["last_cluster"] = cluster
@@ -1327,7 +1809,7 @@ def main():
                     else:
                         st.info("ℹ️ Log in to save daily inputs to your account history.")
                 except Exception as exc:
-                    st.warning(f"⚠️ Unable to run baseline + KMeans inference: {exc}")
+                    st.warning(f"⚠️ Unable to run integrated inference: {exc}")
 
         if st.button("🔄 Start New Assessment", key="reset_assessment_btn", width="stretch"):
             reset_survey_state()
@@ -1339,18 +1821,28 @@ def main():
             st.markdown("<div class='results-section'>", unsafe_allow_html=True)
             
             prediction = st.session_state.get("last_prediction")
-            
-            st.markdown("<h3 style='text-align: center;'>📊 Baseline + KMeans Output</h3>", unsafe_allow_html=True)
-            baseline_output = prediction.get("baseline_multinomial", {}) if isinstance(prediction, dict) else {}
-            kmeans_output = prediction.get("unsupervised_kmeans", {}) if isinstance(prediction, dict) else {}
 
-            col_model_1, col_model_2 = st.columns(2)
-            with col_model_1:
-                st.markdown("#### Baseline Model")
-                st.json(baseline_output)
-            with col_model_2:
-                st.markdown("#### KMeans Model")
-                st.json(kmeans_output)
+            st.markdown("<h3 style='text-align: center;'>📊 Model Output</h3>", unsafe_allow_html=True)
+            st.caption("Random Forest is selected by default. Use the dropdown to view the baseline or unsupervised output instead.")
+
+            model_choice = st.selectbox(
+                "Select model",
+                options=["Random Forest", "Baseline", "Unsupervised"],
+                index=0,
+                key="result_model_choice",
+            )
+
+            burnout_class, score_label, score_value, selected_details = get_selected_model_output(prediction, model_choice)
+            score_display = f"{score_value:.1%}" if model_choice != "Unsupervised" else f"{score_value:.0f}"
+
+            col_model_a, col_model_b = st.columns(2)
+            with col_model_a:
+                st.metric("Burnout class type", burnout_class)
+            with col_model_b:
+                st.metric(score_label, score_display)
+
+            with st.expander("View model details"):
+                st.json(selected_details)
             
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1364,6 +1856,11 @@ def main():
     
     # ========== RIGHT COLUMN: Authentication ==========
     with right_col:
+        if st.button("📊 Model Analysis", key="analysis_btn", width="stretch"):
+            st.session_state["auth_page"] = "model_analysis"
+            st.rerun()
+        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+
         if st.session_state.get("current_user_id"):
             st.markdown("<div class='auth-header'>Logged In</div>", unsafe_allow_html=True)
             st.markdown(
@@ -1382,6 +1879,7 @@ def main():
                 st.session_state["current_user_id"] = None
                 st.session_state["current_user_email"] = None
                 st.session_state["current_user_name"] = None
+                st.session_state["current_user_phone_number"] = None
                 st.rerun()
             st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
             st.markdown("<div class='auth-subtext'>Supabase history enabled</div>", unsafe_allow_html=True)
