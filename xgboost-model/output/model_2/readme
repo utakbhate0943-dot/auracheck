@@ -1,0 +1,7 @@
+Note on Model_2 Outputs
+
+The current saved outputs (metrics, predictions, and evaluation files) 
+are based only on the tuned XGBoost model obtained through grid search.
+
+Although a fixed, regularized XGBoost model was also implemented to reduce overfitting, 
+its results are used for comparison and analysis only and are not included in the exported output files.
