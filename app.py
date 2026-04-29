@@ -33,6 +33,8 @@ BASELINE_METRICS_PATH = os.path.join(BASELINE_OUTPUT_DIR, "production_pruned_mul
 BASELINE_CM_PATH = os.path.join(BASELINE_OUTPUT_DIR, "final_selected_baseline_confusion_matrix.csv")
 BASELINE_SENS_SPEC_PATH = os.path.join(BASELINE_OUTPUT_DIR, "final_selected_baseline_sensitivity_specificity.csv")
 RF_SUMMARY_PATH = os.path.join(APP_DIR, "ml_randomforest", "outputs", "random_forest_outputs_summary.json")
+XGB_MODEL2_METRICS_PATH = os.path.join(APP_DIR, "xgboost-model", "output", "model_2", "xgboost_metrics.csv")
+XGB_MODEL2_CM_PATH = os.path.join(APP_DIR, "xgboost-model", "output", "model_2", "xgboost_confusion_matrix_tuned.csv")
 KMEANS_BASELINE_RESULTS_PATH = os.path.join(APP_DIR, "Unsupervised", "outputs", "baseline_kmeans", "kmeans_results.json")
 KMEANS_BENCHMARK_RESULTS_PATH = os.path.join(APP_DIR, "Unsupervised", "outputs", "kmeans_benchmark", "unsupervised_experiments_results.json")
 
@@ -82,6 +84,8 @@ def load_model_analysis_data() -> dict:
     baseline_metrics = {}
     baseline_cm = pd.DataFrame()
     baseline_sens_spec = pd.DataFrame()
+    xgb_metrics = {}
+    xgb_cm = pd.DataFrame()
 
     if os.path.exists(BASELINE_METRICS_PATH):
         baseline_metrics_df = pd.read_csv(BASELINE_METRICS_PATH)
@@ -95,6 +99,18 @@ def load_model_analysis_data() -> dict:
         baseline_sens_spec = pd.read_csv(BASELINE_SENS_SPEC_PATH)
 
     rf_summary = load_json_file(RF_SUMMARY_PATH, {})
+
+    if os.path.exists(XGB_MODEL2_METRICS_PATH):
+        xgb_metrics_df = pd.read_csv(XGB_MODEL2_METRICS_PATH)
+        if not xgb_metrics_df.empty and {"Metric", "Value"}.issubset(xgb_metrics_df.columns):
+            xgb_metrics = {
+                str(row["Metric"]).strip(): float(row["Value"])
+                for _, row in xgb_metrics_df.iterrows()
+            }
+
+    if os.path.exists(XGB_MODEL2_CM_PATH):
+        xgb_cm = pd.read_csv(XGB_MODEL2_CM_PATH, index_col=0)
+
     kmeans_baseline = load_json_file(KMEANS_BASELINE_RESULTS_PATH, {})
     kmeans_benchmark = load_json_file(KMEANS_BENCHMARK_RESULTS_PATH, {})
 
@@ -105,17 +121,22 @@ def load_model_analysis_data() -> dict:
             "sensitivity_specificity": baseline_sens_spec,
         },
         "random_forest": rf_summary,
+        "xgboost": {
+            "metrics": xgb_metrics,
+            "confusion_matrix": xgb_cm,
+        },
         "kmeans_baseline": kmeans_baseline,
         "kmeans_benchmark": kmeans_benchmark,
     }
 
 
 def build_model_comparison_table(analysis_data: dict) -> pd.DataFrame:
-    """Build a compact comparison table for the three model families."""
+    """Build a compact comparison table for the model families."""
     baseline_metrics = analysis_data.get("baseline", {}).get("metrics", {})
     rf_summary = analysis_data.get("random_forest", {})
     rf_eval = rf_summary.get("evaluation_matrix", {}) if isinstance(rf_summary, dict) else {}
     rf_output = rf_summary.get("output", {}) if isinstance(rf_summary, dict) else {}
+    xgb_metrics = analysis_data.get("xgboost", {}).get("metrics", {})
     kmeans_baseline = analysis_data.get("kmeans_baseline", {})
     kmeans_benchmark = analysis_data.get("kmeans_benchmark", {})
     kmeans_best = kmeans_benchmark.get("best_overall", {}) if isinstance(kmeans_benchmark, dict) else {}
@@ -134,6 +155,13 @@ def build_model_comparison_table(analysis_data: dict) -> pd.DataFrame:
             "Primary metric": float(rf_output.get("accuracy", 0.0)),
             "Secondary metric": float(rf_eval.get("macro avg", {}).get("recall", 0.0)),
             "Notes": "Best supervised accuracy in this project; non-linear model captures more structure.",
+        },
+        {
+            "Model": "XGBoost (tuned model_2)",
+            "Type": "Supervised candidate",
+            "Primary metric": float(xgb_metrics.get("Accuracy", 0.0)),
+            "Secondary metric": float(xgb_metrics.get("Macro Recall", 0.0)),
+            "Notes": "Gradient boosting benchmark from xgboost-model outputs; evaluated from tuned model_2 artifacts.",
         },
         {
             "Model": "KMeans baseline / benchmark",
@@ -155,6 +183,8 @@ def render_model_analysis_page() -> None:
     rf_summary = analysis_data.get("random_forest", {}) if isinstance(analysis_data.get("random_forest", {}), dict) else {}
     rf_eval = rf_summary.get("evaluation_matrix", {})
     rf_cm = rf_summary.get("confusion_matrix", {})
+    xgb_metrics = analysis_data.get("xgboost", {}).get("metrics", {})
+    xgb_cm = analysis_data.get("xgboost", {}).get("confusion_matrix", pd.DataFrame())
     kmeans_baseline = analysis_data.get("kmeans_baseline", {})
     kmeans_benchmark = analysis_data.get("kmeans_benchmark", {})
     kmeans_best = kmeans_benchmark.get("best_overall", {}) if isinstance(kmeans_benchmark, dict) else {}
@@ -211,9 +241,10 @@ def render_model_analysis_page() -> None:
         </style>
         <div class='analysis-hero'>
             <p class='analysis-title'>Model Analysis and Recommendation</p>
-            <p class='analysis-subtitle'>Baseline logistic regression, random forest, and KMeans are compared using saved project outputs and evaluation artifacts.</p>
+            <p class='analysis-subtitle'>Baseline logistic regression, random forest, XGBoost, and KMeans are compared using saved project outputs and evaluation artifacts.</p>
             <div class='analysis-pill-row'>
                 <span class='analysis-pill analysis-pill-good'>Prediction Winner: Random Forest</span>
+                <span class='analysis-pill analysis-pill-mid'>Supervised Benchmark: XGBoost</span>
                 <span class='analysis-pill analysis-pill-mid'>Benchmark Model: Baseline</span>
                 <span class='analysis-pill analysis-pill-risk'>Exploration Only: KMeans</span>
             </div>
@@ -226,7 +257,7 @@ def render_model_analysis_page() -> None:
         st.session_state["auth_page"] = "main"
         st.rerun()
 
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
         st.metric("Baseline Accuracy", f"{float(baseline_metrics.get('Accuracy', 0.0)):.1%}")
         st.caption("Pruned multinomial logistic regression")
@@ -234,6 +265,9 @@ def render_model_analysis_page() -> None:
         st.metric("Random Forest Accuracy", f"{float(rf_summary.get('output', {}).get('accuracy', 0.0)):.1%}")
         st.caption("SMOTE + 300-tree random forest")
     with col_c:
+        st.metric("XGBoost Accuracy", f"{float(xgb_metrics.get('Accuracy', 0.0)):.1%}")
+        st.caption("Tuned XGBoost (model_2)")
+    with col_d:
         st.metric("Best KMeans NMI", f"{float(kmeans_best.get('normalized_mutual_info', kmeans_baseline.get('alignment_to_burnout_labels', {}).get('normalized_mutual_info', 0.0))):.4f}")
         st.caption("Unsupervised label alignment")
 
@@ -247,7 +281,7 @@ def render_model_analysis_page() -> None:
     )
 
     st.markdown("### How each model behaves")
-    insight_cols = st.columns(3)
+    insight_cols = st.columns(4)
     with insight_cols[0]:
         st.markdown(
             """
@@ -273,6 +307,17 @@ def render_model_analysis_page() -> None:
     with insight_cols[2]:
         st.markdown(
             """
+            <div class='card-style' style='border-left: 6px solid #246A9A; padding: 18px;'>
+            <strong style='font-size:18px;'>XGBoost</strong><br/>
+            The tuned XGBoost run provides a gradient-boosted tree baseline for comparison. It captures non-linear effects,
+            but the saved tuned metrics are <strong>still below random forest</strong> in this repository outputs.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with insight_cols[3]:
+        st.markdown(
+            """
             <div class='card-style' style='border-left: 6px solid #A04857; padding: 18px;'>
             <strong style='font-size:18px;'>KMeans</strong><br/>
             KMeans is an exploratory segmentation tool, not a predictive classifier. Its internal clustering
@@ -293,13 +338,14 @@ def render_model_analysis_page() -> None:
     family_score_fig.add_trace(
         go.Bar(
             name="Primary score",
-            x=["Baseline", "Random Forest", "KMeans"],
+            x=["Baseline", "Random Forest", "XGBoost", "KMeans"],
             y=[
                 float(baseline_metrics.get("Accuracy", 0.0)),
                 float(rf_summary.get("output", {}).get("accuracy", 0.0)),
+                float(xgb_metrics.get("Accuracy", 0.0)),
                 float(kmeans_best.get("normalized_mutual_info", kmeans_baseline.get("alignment_to_burnout_labels", {}).get("normalized_mutual_info", 0.0))),
             ],
-            marker_color=["#C39A3A", "#2E8B57", "#A04857"],
+            marker_color=["#C39A3A", "#2E8B57", "#246A9A", "#A04857"],
         )
     )
     family_score_fig.update_layout(
@@ -336,7 +382,7 @@ def render_model_analysis_page() -> None:
         st.plotly_chart(kmeans_metric_fig, use_container_width=True)
 
     st.markdown("### Evaluation details")
-    eval_cols = st.columns(2)
+    eval_cols = st.columns(3)
     with eval_cols[0]:
         st.markdown("#### Baseline model metrics")
         st.dataframe(pd.DataFrame([baseline_metrics]), use_container_width=True, hide_index=True)
@@ -389,6 +435,35 @@ def render_model_analysis_page() -> None:
                 margin=dict(l=20, r=20, t=50, b=20),
             )
             st.plotly_chart(rf_heatmap, use_container_width=True)
+    with eval_cols[2]:
+        st.markdown("#### XGBoost metrics")
+        xgb_metrics_table = pd.DataFrame([{
+            "accuracy": float(xgb_metrics.get("Accuracy", 0.0)),
+            "macro_recall": float(xgb_metrics.get("Macro Recall", 0.0)),
+            "macro_f1": float(xgb_metrics.get("Macro F1", 0.0)),
+            "kappa": float(xgb_metrics.get("Kappa", 0.0)),
+            "roc_auc_ovr": float(xgb_metrics.get("ROC-AUC OvR", 0.0)),
+            "log_loss": float(xgb_metrics.get("Log Loss", 0.0)),
+        }])
+        st.dataframe(xgb_metrics_table, use_container_width=True, hide_index=True)
+
+        if not xgb_cm.empty:
+            st.dataframe(xgb_cm, use_container_width=True)
+            xgb_heatmap = go.Figure(
+                data=go.Heatmap(
+                    z=xgb_cm.values,
+                    x=list(xgb_cm.columns),
+                    y=list(xgb_cm.index),
+                    colorscale="Blues",
+                    showscale=True,
+                )
+            )
+            xgb_heatmap.update_layout(
+                title="XGBoost Tuned Confusion Matrix (Blue benchmark)",
+                height=360,
+                margin=dict(l=20, r=20, t=50, b=20),
+            )
+            st.plotly_chart(xgb_heatmap, use_container_width=True)
 
     st.markdown("### Recommendation")
     st.markdown(
@@ -397,7 +472,7 @@ def render_model_analysis_page() -> None:
             <div style='font-size:18px; font-weight:800; color:#1C5C36; margin-bottom:8px;'>Recommended Production Model: Random Forest</div>
             <div style='font-size:14px; font-weight:600; color:#2C3A3A; line-height:1.6;'>
                 Random Forest is the best choice for final predictive use because it gives the <strong>highest supervised accuracy</strong> and
-                <strong>better macro-level recall</strong> than the baseline model. Keep baseline logistic regression for interpretability checks,
+                <strong>better macro-level recall</strong> than the baseline and XGBoost outputs in this repo. Keep baseline logistic regression for interpretability checks,
                 and keep KMeans for exploratory segmentation only.
             </div>
         </div>
@@ -409,8 +484,9 @@ def render_model_analysis_page() -> None:
         st.markdown(
             "- Baseline script: pruned multinomial logistic regression, standard supervised baseline, low accuracy.\n"
             "- Random forest code: 300 trees, `max_features='log2'`, `min_samples_split=5`, SMOTE on training only.\n"
+            "- XGBoost artifacts: tuned model_2 metrics and confusion matrix loaded from xgboost-model/output for supervised comparison.\n"
             "- KMeans code: unsupervised clustering; useful for grouping students, but not for predicting burnout labels directly.\n"
-            "- Best model choice: Random Forest for prediction; baseline for explanation; KMeans for segmentation."
+            "- Best model choice: Random Forest for prediction; baseline and XGBoost for supervised benchmarking; KMeans for segmentation."
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -651,11 +727,13 @@ def get_user_static_answers(user_id: str) -> dict:
         )
         rows = response.data or []
         row = rows[0] if rows else None
-    except Exception:
+    except Exception as exc:
+        if _is_missing_users_static_columns_error(exc):
+            return get_profile_static_answers(user_id)
         return {}
 
     if not isinstance(row, dict):
-        return {}
+        return get_profile_static_answers(user_id)
 
     return {
         "Age": row.get("survey_age"),
@@ -667,6 +745,146 @@ def get_user_static_answers(user_id: str) -> dict:
         "Semester": row.get("survey_semester"),
         "Residence_Type": row.get("survey_residence_type"),
     }
+
+
+def _is_missing_users_static_columns_error(exception: Exception) -> bool:
+    """Return True when Supabase reports missing users.survey_* columns."""
+    text = str(exception).lower()
+    return "pgrst204" in text or ("survey_age" in text and "schema cache" in text)
+
+
+def _parse_json_like(value: Any) -> dict:
+    """Parse dict-or-JSON-string payloads safely into a dict."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _read_profile_personal_details(user_id: str) -> dict:
+    """Read profile.personal_details for the user as a dictionary."""
+    try:
+        client = get_required_supabase_client()
+        response = (
+            client.table("profile")
+            .select("personal_details")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        rows = response.data or []
+        row = rows[0] if rows else None
+    except Exception:
+        return {}
+
+    if not isinstance(row, dict):
+        return {}
+    return _parse_json_like(row.get("personal_details"))
+
+
+def get_profile_static_answers(user_id: str) -> dict:
+    """Read static survey answers stored inside profile.personal_details."""
+    details = _read_profile_personal_details(user_id)
+    static_blob = details.get("static_answers", {}) if isinstance(details, dict) else {}
+    static_blob = _parse_json_like(static_blob)
+
+    return {
+        field_name: (static_blob.get(field_name) or "")
+        for field_name in STATIC_USER_FIELDS
+    }
+
+
+def save_profile_static_answers(user_id: str, answers: dict, only_if_missing: bool = False) -> None:
+    """Persist static survey answers in profile.personal_details.static_answers."""
+    existing_details = _read_profile_personal_details(user_id)
+    static_blob = _parse_json_like(existing_details.get("static_answers", {}))
+
+    for field_name in STATIC_USER_FIELDS:
+        incoming = answers.get(field_name)
+        value = incoming.strip() if isinstance(incoming, str) else incoming
+        if not value:
+            continue
+        current_value = str(static_blob.get(field_name) or "").strip()
+        if only_if_missing and current_value:
+            continue
+        static_blob[field_name] = value
+
+    if not static_blob:
+        return
+
+    existing_details["static_answers"] = static_blob
+    try:
+        client = get_required_supabase_client()
+        client.table("profile").upsert(
+            {
+                "user_id": user_id,
+                "personal_details": existing_details,
+            },
+            on_conflict="user_id",
+        ).execute()
+        st.session_state["last_supabase_sync_error"] = None
+    except Exception as exc:
+        st.session_state["last_supabase_sync_error"] = f"profile static answers update failed: {exc}"
+
+
+def get_latest_daily_static_answers(user_id: str) -> dict:
+    """Return static profile fields from the user's most recent saved daily survey."""
+    try:
+        client = get_required_supabase_client()
+        response = (
+            client.table("daily_inputs")
+            .select("answers_json")
+            .eq("user_id", user_id)
+            .order("submitted_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = response.data or []
+        row = rows[0] if rows else None
+    except Exception:
+        return {}
+
+    if not isinstance(row, dict):
+        return {}
+
+    answers_payload = row.get("answers_json")
+    if isinstance(answers_payload, str):
+        try:
+            answers_payload = json.loads(answers_payload)
+        except Exception:
+            answers_payload = {}
+
+    if not isinstance(answers_payload, dict):
+        return {}
+
+    static_answers = {}
+    for field_name in STATIC_USER_FIELDS:
+        value = (answers_payload.get(field_name) or "")
+        if isinstance(value, str):
+            value = value.strip()
+        if value:
+            static_answers[field_name] = value
+    return static_answers
+
+
+def get_merged_static_answers(user_id: str) -> dict:
+    """Merge static answers from users columns, profile fallback, and latest daily input."""
+    users_static = get_user_static_answers(user_id)
+    profile_static = get_profile_static_answers(user_id)
+    latest_daily_static = get_latest_daily_static_answers(user_id)
+
+    merged: dict[str, Any] = {}
+    for field_name in STATIC_USER_FIELDS:
+        users_value = str(users_static.get(field_name) or "").strip()
+        profile_value = str(profile_static.get(field_name) or "").strip()
+        daily_value = str(latest_daily_static.get(field_name) or "").strip()
+        merged[field_name] = users_value or profile_value or daily_value
+    return merged
 
 def save_user_static_answer_if_missing(user_id: str, field_name: str, field_value: str) -> None:
     """Persist first submitted baseline answer only once for the user."""
@@ -691,7 +909,11 @@ def save_user_static_answer_if_missing(user_id: str, field_name: str, field_valu
             return
 
         client.table("users").update({column_name: value}).eq("user_id", user_id).execute()
+        st.session_state["last_supabase_sync_error"] = None
     except Exception as exc:
+        if _is_missing_users_static_columns_error(exc):
+            save_profile_static_answers(user_id, {field_name: value}, only_if_missing=True)
+            return
         st.session_state["last_supabase_sync_error"] = f"users static answer update failed: {exc}"
 
 
@@ -711,6 +933,9 @@ def save_user_static_answers(user_id: str, answers: dict) -> None:
         client.table("users").update(payload).eq("user_id", user_id).execute()
         st.session_state["last_supabase_sync_error"] = None
     except Exception as exc:
+        if _is_missing_users_static_columns_error(exc):
+            save_profile_static_answers(user_id, answers)
+            return
         st.session_state["last_supabase_sync_error"] = f"users static answers update failed: {exc}"
 
 
@@ -1090,27 +1315,8 @@ def reset_survey_state() -> None:
     st.session_state["show_results"] = False
 
 
-def get_selected_model_output(prediction: dict, selected_model: str) -> tuple[str, str, float, dict]:
-    """Return a display label, score label, score value, and details for the selected model."""
-    selected_key = (selected_model or "Random Forest").strip().lower()
-    if selected_key == "baseline":
-        baseline_output = prediction.get("baseline_multinomial", {}) if isinstance(prediction, dict) else {}
-        score = float(baseline_output.get("accuracy", 0.0))
-        return (
-            str(baseline_output.get("predicted_class", "N/A")),
-            "Accuracy %",
-            score,
-            baseline_output,
-        )
-    if selected_key in {"unsupervised", "kmeans", "k-means"}:
-        kmeans_output = prediction.get("unsupervised_kmeans", {}) if isinstance(prediction, dict) else {}
-        return (
-            str(kmeans_output.get("mapped_burnout_class", "N/A")),
-            "Cluster ID",
-            float(kmeans_output.get("cluster", 0)),
-            kmeans_output,
-        )
-
+def get_selected_model_output(prediction: Optional[dict], selected_model: str) -> tuple[str, str, float, dict]:
+    """Return random forest display label, score label, score value, and details."""
     rf_output = prediction.get("random_forest", {}) if isinstance(prediction, dict) else {}
     score = float(rf_output.get("accuracy", 0.0))
     return (
@@ -1122,13 +1328,11 @@ def get_selected_model_output(prediction: dict, selected_model: str) -> tuple[st
 
 
 def compact_model_outputs(prediction_payload: dict) -> dict:
-    """Keep only model outputs for storage and rendering."""
+    """Keep only the random forest output for storage and rendering."""
     if not isinstance(prediction_payload, dict):
         return {}
     return {
-        "baseline_multinomial": prediction_payload.get("baseline_multinomial", {}),
         "random_forest": prediction_payload.get("random_forest", {}),
-        "unsupervised_kmeans": prediction_payload.get("unsupervised_kmeans", {}),
     }
 
 
@@ -1234,7 +1438,7 @@ def render_user_progress_section(user_id: str) -> None:
     """Render per-user prediction-class history and feedback form."""
     history_df = get_user_daily_history(user_id)
 
-    st.markdown("#### 📈 Burnout Class History")
+    st.markdown("#### 📈 Daily Progress (Status vs Date)")
     if history_df.empty:
         st.info("No saved daily history yet. Complete today's survey to start tracking burnout class changes.")
         return
@@ -1283,7 +1487,7 @@ def render_user_progress_section(user_id: str) -> None:
     class_fig.update_layout(
         xaxis_title="Date",
         yaxis=dict(
-            title="Burnout Class",
+            title="Burnout Status",
             tickmode="array",
             tickvals=[0, 1, 2, 3],
             ticktext=["Very Low", "Low", "Mid", "High"],
@@ -1507,7 +1711,21 @@ def render_auth_page(auth_page: str) -> None:
         with detail_col_2:
             st.text_input("Phone Number", value=current_phone, disabled=True)
 
-        saved_static_answers = get_user_static_answers(current_user_id) if current_user_id else {}
+        saved_static_answers = get_merged_static_answers(current_user_id) if current_user_id else {}
+        latest_daily_static_answers = get_latest_daily_static_answers(current_user_id) if current_user_id else {}
+
+        # Auto-fill profile details from latest saved survey answers when user static columns are blank.
+        if current_user_id:
+            merged_static_answers = dict(saved_static_answers)
+            for field_name in STATIC_USER_FIELDS:
+                saved_value = str(merged_static_answers.get(field_name) or "").strip()
+                latest_value = str(latest_daily_static_answers.get(field_name) or "").strip()
+                if not saved_value and latest_value:
+                    merged_static_answers[field_name] = latest_value
+            if merged_static_answers != saved_static_answers:
+                save_user_static_answers(current_user_id, merged_static_answers)
+            saved_static_answers = merged_static_answers
+
         static_profile_defaults = {
             "Age": (saved_static_answers.get("Age") or "").strip(),
             "Course": (saved_static_answers.get("Course") or "").strip(),
@@ -1593,6 +1811,16 @@ def render_auth_page(auth_page: str) -> None:
             )
             st.success("✅ Profile details saved.")
             st.rerun()
+
+        st.markdown("#### Daily History")
+        st.caption("Your saved survey submissions and burnout-class trend are shown below.")
+        if current_user_id:
+            render_user_progress_section(current_user_id)
+
+        if st.session_state.get("last_data_save_error"):
+            st.warning(f"Data save issue: {st.session_state.get('last_data_save_error')}")
+        if st.session_state.get("last_supabase_sync_error"):
+            st.warning(f"Supabase sync issue: {st.session_state.get('last_supabase_sync_error')}")
 
         if st.button("Continue to AuraCheck", key="profile_to_main", width="stretch"):
             st.session_state["auth_page"] = "main"
@@ -1713,7 +1941,7 @@ def main():
 
         # For logged-in users, preload baseline answers and skip re-asking them.
         if current_user_id:
-            saved_static_answers = get_user_static_answers(current_user_id)
+            saved_static_answers = get_merged_static_answers(current_user_id)
             for field_name in STATIC_USER_FIELDS:
                 saved_value = (saved_static_answers.get(field_name) or "").strip()
                 if saved_value and not answers.get(field_name):
@@ -1786,7 +2014,7 @@ def main():
                         save_user_static_answers(current_user_id, answers)
 
                     integrated_output = integrated_predict(answers, Path(APP_DIR))
-                    cluster = int(integrated_output.get("unsupervised_kmeans", {}).get("cluster", 0))
+                    cluster = 0
 
                     prediction = compact_model_outputs(integrated_output)
 
@@ -1803,7 +2031,7 @@ def main():
                             cluster=cluster,
                         )
                         if saved_to_sql:
-                            st.success("✅ Daily input saved to local database.")
+                            st.success("✅ Daily input saved to your account history.")
                         else:
                             st.warning(f"⚠️ {save_message}")
                     else:
@@ -1822,18 +2050,11 @@ def main():
             
             prediction = st.session_state.get("last_prediction")
 
-            st.markdown("<h3 style='text-align: center;'>📊 Model Output</h3>", unsafe_allow_html=True)
-            st.caption("Random Forest is selected by default. Use the dropdown to view the baseline or unsupervised output instead.")
+            st.markdown("<h3 style='text-align: center;'>📊 Random Forest Output</h3>", unsafe_allow_html=True)
+            st.caption("Survey analysis uses your trained random forest model only.")
 
-            model_choice = st.selectbox(
-                "Select model",
-                options=["Random Forest", "Baseline", "Unsupervised"],
-                index=0,
-                key="result_model_choice",
-            )
-
-            burnout_class, score_label, score_value, selected_details = get_selected_model_output(prediction, model_choice)
-            score_display = f"{score_value:.1%}" if model_choice != "Unsupervised" else f"{score_value:.0f}"
+            burnout_class, score_label, score_value, selected_details = get_selected_model_output(prediction, "Random Forest")
+            score_display = f"{score_value:.1%}"
 
             col_model_a, col_model_b = st.columns(2)
             with col_model_a:
