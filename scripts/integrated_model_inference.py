@@ -1,12 +1,10 @@
 """
-Integrated inference for baseline multinomial + unsupervised KMeans + random forest.
+Integrated inference for trained random forest only.
 
 Purpose:
 - Accept one user input payload (app-style or dataset-style fields).
-- Run the trained baseline multinomial model from baseline/outputs/final_baseline_model.
 - Run the trained random forest model from ml_randomforest/outputs.
-- Run KMeans clustering compatible with Unsupervised/scripts/run_kmeans_unsupervised.py.
-- Return a single combined output payload.
+- Return a single output payload for app rendering.
 
 Usage examples:
   python scripts/integrated_model_inference.py --input-file Dataset/user_responses.json
@@ -514,21 +512,13 @@ def predict_random_forest(normalized_input: dict[str, Any], bundle: dict[str, An
 def integrated_predict(user_input: dict[str, Any], root: Path) -> dict[str, Any]:
     normalized = normalize_from_app_answers(user_input)
 
-    baseline_bundle, baseline_meta = load_baseline_assets(root)
-    baseline_pred = predict_baseline(normalized, baseline_bundle, baseline_meta)
-
     rf_bundle = load_random_forest_assets(root)
     rf_pred = predict_random_forest(normalized, rf_bundle)
-
-    kmeans_bundle = build_or_load_kmeans_bundle(root)
-    unsupervised_pred = predict_kmeans(normalized, kmeans_bundle)
 
     return {
         "input_raw": user_input,
         "input_normalized": normalized,
-        "baseline_multinomial": baseline_pred,
         "random_forest": rf_pred,
-        "unsupervised_kmeans": unsupervised_pred,
     }
 
 
