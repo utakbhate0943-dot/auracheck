@@ -1,0 +1,1 @@
+{'n_estimators': 300, 'max_features': 'log2', 'min_samples_split': 5, 'min_samples_leaf': 1, 'max_depth': None, 'random_state': 42}

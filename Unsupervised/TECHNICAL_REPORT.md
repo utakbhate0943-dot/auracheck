@@ -276,7 +276,7 @@ Alternative clustering methods (e.g., DBSCAN, Gaussian Mixture Models) were depr
 
 ### 8.2 Why No Train/Test Split?
 K-Means is unsupervised, so there is no train/test paradigm. The model is fit on the entire dataset to maximize learning from all available data. The burnout quartile labels are used only for post-hoc alignment assessment, not for training or hyperparameter tuning.
- r
+
 ### 8.3 Why Standardization?
 - **Numeric features:** StandardScaler ensures equal feature weight by scale (prevents features with large ranges from dominating the distance metric)
 - **Categorical features:** OneHotEncoder converts categorical values to numeric binary columns; no additional scaling needed
@@ -306,7 +306,7 @@ This suggests survey features **only partially** recover meaningful burnout stru
 - **Adjusted Rand Index:** Generally < 0.2 (poor alignment to burnout quartiles)
 - **Normalized Mutual Information:** Generally < 0.1 (low information overlap)
 
-**Interpretation:** Clusters discovered by K-Means do not strongly align with burnout quartile labels, indicating that burnout is not the primary driver of cluster formation in the feature space.1
+**Interpretation:** Clusters discovered by K-Means do not strongly align with burnout quartile labels, indicating that burnout is not the primary driver of cluster formation in the feature space.
 
 ### 9.3 Psychosocial Features Perform Well
 Feature subset experiments show:

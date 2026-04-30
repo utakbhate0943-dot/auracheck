@@ -32,3 +32,5 @@ EDA/Edgar/outputs/augmented_deep/figures/
 # Temporary and export locations
 /tmp/
 
+random_forest_inference_bundle.joblib
+ml_randomforest/outputs/random_forest_inference_bundle.joblib

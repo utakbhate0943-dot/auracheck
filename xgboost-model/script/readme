@@ -1,0 +1,26 @@
+🔹 Models Overview
+1. Pruned Feature Model (xgboost_model.ipynb)
+
+This model uses a reduced set of 14 features that were originally selected from a linear regression baseline using VIF (Variance Inflation Factor) pruning.
+
+Focus: simplicity and consistency with baseline models
+Encoding: ordinal encoding for categorical variables
+No class weighting
+Designed to match the feature set used in logistic regression
+
+👉 This model is easier to interpret but may lose useful information due to feature removal.
+
+2. Expanded Feature Model (xgboost_model_2.ipynb
+
+This model uses a larger set of features and removes only variables that could cause data leakage, such as burnout-related scores and mental health indicators (stress, depression, anxiety).
+
+Focus: maximize predictive performance
+Encoding:
+ordinal encoding for ordered variables
+one-hot encoding for nominal variables
+Includes class imbalance handling using sample weights
+Additional improvements tested:
+Grid search tuning for hyperparameter optimization
+Fixed regularized XGBoost to reduce overfitting
+
+👉 This model allows XGBoost to capture more complex patterns in the data.
