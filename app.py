@@ -608,6 +608,61 @@ def sync_daily_input_to_supabase(daily_payload: dict) -> None:
     """Mirror daily input record to Supabase when configured."""
     sync_payload_to_supabase("daily_inputs", daily_payload, "user_id,input_date")
 
+
+def sync_local_history_to_supabase(user_id: str) -> int:
+    """Read local `USER_RESPONSES_JSON_PATH` and upsert any rows that match `user_id`.
+
+    Returns the number of rows attempted to sync.
+    """
+    if not user_id or not is_supabase_enabled():
+        return 0
+
+    if not os.path.exists(USER_RESPONSES_JSON_PATH):
+        return 0
+
+    synced = 0
+    try:
+        with open(USER_RESPONSES_JSON_PATH, "r", encoding="utf-8") as f:
+            local_rows = json.load(f) or []
+    except Exception:
+        return 0
+
+    for row in local_rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("user_id") or "") != str(user_id):
+            continue
+
+        # Determine input_date and submitted_at
+        submitted_at = row.get("timestamp") or row.get("submitted_at") or None
+        input_date = None
+        if isinstance(row.get("input_date"), str) and row.get("input_date"):
+            input_date = row.get("input_date")
+        elif isinstance(submitted_at, str) and len(submitted_at) >= 10:
+            input_date = submitted_at[:10]
+
+        if not input_date:
+            # skip rows without a sensible date
+            continue
+
+        payload = {
+            "user_id": user_id,
+            "input_date": input_date,
+            "submitted_at": submitted_at,
+            "answers_json": row.get("user_inputs") or row.get("answers_json") or {},
+            "prediction_json": row.get("predictions") or row.get("prediction_json") or {},
+            "cluster": int(row.get("cluster") or 0),
+        }
+
+        try:
+            sync_daily_input_to_supabase(payload)
+            synced += 1
+        except Exception:
+            # Best-effort: continue to next row on errors
+            continue
+
+    return synced
+
 def init_database() -> None:
     """Validate Supabase connectivity for required app tables."""
     try:
@@ -1110,9 +1165,44 @@ def get_user_daily_history(user_id: str) -> pd.DataFrame:
             .execute()
         )
     except Exception:
-        return pd.DataFrame()
+        # If Supabase is unavailable or query failed, we'll fall back to local JSON
+        # history saved by `save_user_response_to_json` (if present).
+        daily_response = None
 
-    history_df = pd.DataFrame(daily_response.data or [])
+    history_df = pd.DataFrame(daily_response.data or []) if daily_response is not None else pd.DataFrame()
+
+    # If Supabase returned nothing, try local JSON fallback for this user.
+    if history_df.empty:
+        try:
+            if os.path.exists(USER_RESPONSES_JSON_PATH):
+                with open(USER_RESPONSES_JSON_PATH, "r", encoding="utf-8") as f:
+                    local_rows = json.load(f) or []
+                matched_rows = []
+                for row in local_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("user_id") or "") != str(user_id or ""):
+                        continue
+                    # Map local JSON shape to the same fields we expect from Supabase
+                    ts = row.get("timestamp") or row.get("submitted_at") or None
+                    try:
+                        input_date = ts[:10] if isinstance(ts, str) and len(ts) >= 10 else None
+                    except Exception:
+                        input_date = None
+                    matched_rows.append(
+                        {
+                            "entry_id": row.get("entry_id") or str(uuid.uuid4()),
+                            "user_id": row.get("user_id"),
+                            "input_date": input_date,
+                            "submitted_at": ts,
+                            "prediction_json": row.get("predictions") or row.get("prediction_json") or {},
+                            "cluster": row.get("cluster") or 0,
+                        }
+                    )
+                if matched_rows:
+                    history_df = pd.DataFrame(matched_rows)
+        except Exception:
+            history_df = pd.DataFrame()
 
     if history_df.empty:
         return history_df
@@ -1149,6 +1239,31 @@ def get_user_daily_history(user_id: str) -> pd.DataFrame:
     history_df["depression_score"] = trend_metrics.apply(lambda t: t.get("depression_score"))
     history_df["mental_health_pct"] = trend_metrics.apply(lambda t: t.get("mental_health_pct"))
     return history_df
+
+
+def fetch_daily_inputs_from_supabase(user_id: str) -> pd.DataFrame:
+    """Attempt to fetch daily_inputs rows for a user directly from Supabase.
+
+    This is a non-fallback helper that returns an empty DataFrame when Supabase
+    is not available or the query fails.
+    """
+    try:
+        client = get_required_supabase_client()
+        response = (
+            client.table("daily_inputs")
+            .select("entry_id,user_id,input_date,submitted_at,prediction_json,cluster")
+            .eq("user_id", user_id)
+            .order("input_date", desc=False)
+            .execute()
+        )
+    except Exception:
+        return pd.DataFrame()
+
+    try:
+        df = pd.DataFrame(response.data or [])
+        return df
+    except Exception:
+        return pd.DataFrame()
 
 
 def parse_prediction_json(prediction_json: Any) -> dict:
@@ -1338,30 +1453,35 @@ def render_admin_page() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def save_user_response_to_json(answers: dict, prediction: dict, cluster: int) -> None:
-    """Save user response to JSON file."""
+def save_user_response_to_json(answers: dict, prediction: dict, cluster: int, user_id: Optional[str] = None) -> None:
+    """Save user response to JSON file. Include `user_id` when available so local history
+    can be used as a fallback when Supabase is unavailable or prior anonymous runs were
+    performed before login.
+    """
     try:
         response_data = {
+            "entry_id": str(uuid.uuid4()),
             "timestamp": datetime.now().isoformat(),
+            "user_id": user_id,
             "user_inputs": answers,
             "predictions": prediction,
-            "cluster": cluster
+            "cluster": cluster,
         }
-        
+
         all_responses = []
-        
+
         if os.path.exists(USER_RESPONSES_JSON_PATH):
-            with open(USER_RESPONSES_JSON_PATH, 'r') as f:
+            with open(USER_RESPONSES_JSON_PATH, "r", encoding="utf-8") as f:
                 try:
                     all_responses = json.load(f)
-                except:
+                except Exception:
                     all_responses = []
-        
+
         all_responses.append(response_data)
-        
-        with open(USER_RESPONSES_JSON_PATH, 'w') as f:
+
+        with open(USER_RESPONSES_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(all_responses, f, indent=2)
-        
+
     except Exception:
         # JSON export is optional and should not block the UI flow.
         pass
@@ -1656,6 +1776,14 @@ def render_auth_page(auth_page: str) -> None:
                     st.session_state["current_user_email"] = user_data["email"]
                     st.session_state["current_user_name"] = f"{user_data['first_name']} {user_data['last_name']}"
                     st.session_state["current_user_phone_number"] = user_data.get("phone_number", "")
+                    # Attempt to sync any local JSON history entries for this user to Supabase.
+                    try:
+                        synced_count = sync_local_history_to_supabase(user_data["user_id"])
+                        if synced_count:
+                            st.info(f"✅ Synced {synced_count} local history entr{'y' if synced_count==1 else 'ies'} to your account.")
+                    except Exception:
+                        # Best-effort; do not block login on sync failures.
+                        pass
                     st.session_state["auth_page"] = "profile"
                     st.success("✅ Login successful.")
                     st.rerun()
@@ -1816,6 +1944,18 @@ def render_auth_page(auth_page: str) -> None:
         st.markdown("#### Daily History")
         st.caption("Your saved survey submissions and burnout-class trend are shown below.")
         if current_user_id:
+            # Allow explicit refresh from Supabase for immediate verification
+            refresh_col, spacer = st.columns([1, 3])
+            with refresh_col:
+                if st.button("🔁 Refresh history from Supabase", key="refresh_history_btn"):
+                    sup_df = fetch_daily_inputs_from_supabase(current_user_id)
+                    if not sup_df.empty:
+                        st.success(f"Fetched {len(sup_df)} rows from Supabase.")
+                    else:
+                        st.info("No rows returned from Supabase or service unavailable.")
+                    # Rerun so the profile page picks up any newly synced rows
+                    st.rerun()
+
             render_user_progress_section(current_user_id)
 
         if st.session_state.get("last_data_save_error"):
@@ -2023,7 +2163,7 @@ def main():
                     st.session_state["last_cluster"] = cluster
                     st.session_state["show_results"] = True
 
-                    save_user_response_to_json(answers, prediction, cluster)
+                    save_user_response_to_json(answers, prediction, cluster, user_id=st.session_state.get("current_user_id"))
                     if st.session_state.get("current_user_id"):
                         current_user_id = str(st.session_state.get("current_user_id") or "")
                         saved_to_sql, save_message = save_user_daily_input_to_sql(
