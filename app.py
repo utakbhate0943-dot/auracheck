@@ -11,7 +11,7 @@ import uuid
 import secrets
 import hashlib
 import hmac
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -26,6 +26,7 @@ from supabase import create_client
 load_dotenv(override=True)
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "utakbhate0943@sdsu.com").strip().lower()
+TEST_DEMO_EMAIL = "test@gmail.com"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 USER_RESPONSES_JSON_PATH = os.path.join(APP_DIR, "Dataset", "user_responses.json")
 BASELINE_OUTPUT_DIR = os.path.join(APP_DIR, "baseline", "outputs", "final_baseline_model")
@@ -607,6 +608,61 @@ def sync_daily_input_to_supabase(daily_payload: dict) -> None:
     """Mirror daily input record to Supabase when configured."""
     sync_payload_to_supabase("daily_inputs", daily_payload, "user_id,input_date")
 
+
+def sync_local_history_to_supabase(user_id: str) -> int:
+    """Read local `USER_RESPONSES_JSON_PATH` and upsert any rows that match `user_id`.
+
+    Returns the number of rows attempted to sync.
+    """
+    if not user_id or not is_supabase_enabled():
+        return 0
+
+    if not os.path.exists(USER_RESPONSES_JSON_PATH):
+        return 0
+
+    synced = 0
+    try:
+        with open(USER_RESPONSES_JSON_PATH, "r", encoding="utf-8") as f:
+            local_rows = json.load(f) or []
+    except Exception:
+        return 0
+
+    for row in local_rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("user_id") or "") != str(user_id):
+            continue
+
+        # Determine input_date and submitted_at
+        submitted_at = row.get("timestamp") or row.get("submitted_at") or None
+        input_date = None
+        if isinstance(row.get("input_date"), str) and row.get("input_date"):
+            input_date = row.get("input_date")
+        elif isinstance(submitted_at, str) and len(submitted_at) >= 10:
+            input_date = submitted_at[:10]
+
+        if not input_date:
+            # skip rows without a sensible date
+            continue
+
+        payload = {
+            "user_id": user_id,
+            "input_date": input_date,
+            "submitted_at": submitted_at,
+            "answers_json": row.get("user_inputs") or row.get("answers_json") or {},
+            "prediction_json": row.get("predictions") or row.get("prediction_json") or {},
+            "cluster": int(row.get("cluster") or 0),
+        }
+
+        try:
+            sync_daily_input_to_supabase(payload)
+            synced += 1
+        except Exception:
+            # Best-effort: continue to next row on errors
+            continue
+
+    return synced
+
 def init_database() -> None:
     """Validate Supabase connectivity for required app tables."""
     try:
@@ -982,6 +1038,81 @@ def save_user_daily_input_to_sql(user_id: str, answers: dict, prediction: dict, 
         st.session_state["last_supabase_sync_error"] = f"daily_inputs save failed: {exc}"
         return False, "Unable to save your daily input right now."
 
+
+def build_demo_prediction_payload(day_index: int) -> dict:
+    """Create a deterministic burnout prediction payload for demo history rows."""
+    demo_steps = [
+        ("High Burnout", {"low burnout": 0.08, "mid burnout": 0.17, "high burnout": 0.75}),
+        ("High Burnout", {"low burnout": 0.10, "mid burnout": 0.20, "high burnout": 0.70}),
+        ("High Burnout", {"low burnout": 0.12, "mid burnout": 0.24, "high burnout": 0.64}),
+        ("Mid Burnout", {"low burnout": 0.18, "mid burnout": 0.48, "high burnout": 0.34}),
+        ("Mid Burnout", {"low burnout": 0.24, "mid burnout": 0.50, "high burnout": 0.26}),
+        ("Mid Burnout", {"low burnout": 0.30, "mid burnout": 0.47, "high burnout": 0.23}),
+        ("Low Burnout", {"low burnout": 0.48, "mid burnout": 0.34, "high burnout": 0.18}),
+        ("Low Burnout", {"low burnout": 0.56, "mid burnout": 0.28, "high burnout": 0.16}),
+        ("Low Burnout", {"low burnout": 0.63, "mid burnout": 0.22, "high burnout": 0.15}),
+        ("Low Burnout", {"low burnout": 0.70, "mid burnout": 0.18, "high burnout": 0.12}),
+    ]
+    predicted_class, probabilities = demo_steps[min(max(day_index, 0), len(demo_steps) - 1)]
+    return {
+        "random_forest": {
+            "predicted_class": predicted_class,
+            "probabilities": probabilities,
+        }
+    }
+
+
+def ensure_demo_history_for_test_account(user_id: str, current_email: str) -> bool:
+    """Seed a one-time 10-day demo history for the test account."""
+    if not user_id or (current_email or "").strip().lower() != TEST_DEMO_EMAIL:
+        return False
+
+    session_flag = f"demo_history_seeded:{user_id}"
+    if st.session_state.get(session_flag):
+        return False
+
+    try:
+        client = get_required_supabase_client()
+        response = (
+            client.table("daily_inputs")
+            .select("input_date")
+            .eq("user_id", user_id)
+            .order("input_date", desc=False)
+            .execute()
+        )
+        existing_dates = set()
+        for row in response.data or []:
+            if isinstance(row, dict):
+                input_date_value = row.get("input_date")
+                if input_date_value:
+                    existing_dates.add(str(input_date_value))
+
+        rows_to_insert = []
+        for day_index, days_back in enumerate(range(9, -1, -1)):
+            target_date = date.today() - timedelta(days=days_back)
+            target_date_value = target_date.isoformat()
+            if target_date_value in existing_dates:
+                continue
+            rows_to_insert.append(
+                {
+                    "user_id": user_id,
+                    "input_date": target_date_value,
+                    "submitted_at": f"{target_date_value}T09:00:00",
+                    "answers_json": {},
+                    "prediction_json": build_demo_prediction_payload(day_index),
+                    "cluster": 0,
+                }
+            )
+
+        if rows_to_insert:
+            client.table("daily_inputs").insert(rows_to_insert).execute()
+
+        st.session_state[session_flag] = True
+        return bool(rows_to_insert)
+    except Exception as exc:
+        st.session_state["last_data_save_error"] = f"demo history seed failed: {exc}"
+        return False
+
 def has_user_submitted_today(user_id: str) -> bool:
     """Check whether user already submitted daily survey today."""
     today_value = date.today().isoformat()
@@ -1033,21 +1164,61 @@ def get_user_daily_history(user_id: str) -> pd.DataFrame:
             .order("input_date", desc=False)
             .execute()
         )
+    except Exception:
+        # If Supabase is unavailable or query failed, we'll fall back to local JSON
+        # history saved by `save_user_response_to_json` (if present).
+        daily_response = None
+
+    history_df = pd.DataFrame(daily_response.data or []) if daily_response is not None else pd.DataFrame()
+
+    # If Supabase returned nothing, try local JSON fallback for this user.
+    if history_df.empty:
+        try:
+            if os.path.exists(USER_RESPONSES_JSON_PATH):
+                with open(USER_RESPONSES_JSON_PATH, "r", encoding="utf-8") as f:
+                    local_rows = json.load(f) or []
+                matched_rows = []
+                for row in local_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("user_id") or "") != str(user_id or ""):
+                        continue
+                    # Map local JSON shape to the same fields we expect from Supabase
+                    ts = row.get("timestamp") or row.get("submitted_at") or None
+                    try:
+                        input_date = ts[:10] if isinstance(ts, str) and len(ts) >= 10 else None
+                    except Exception:
+                        input_date = None
+                    matched_rows.append(
+                        {
+                            "entry_id": row.get("entry_id") or str(uuid.uuid4()),
+                            "user_id": row.get("user_id"),
+                            "input_date": input_date,
+                            "submitted_at": ts,
+                            "prediction_json": row.get("predictions") or row.get("prediction_json") or {},
+                            "cluster": row.get("cluster") or 0,
+                        }
+                    )
+                if matched_rows:
+                    history_df = pd.DataFrame(matched_rows)
+        except Exception:
+            history_df = pd.DataFrame()
+
+    if history_df.empty:
+        return history_df
+
+    feedback_df = pd.DataFrame()
+    try:
         feedback_response = (
             client.table("daily_feedback")
             .select("user_id,input_date,recommendation_followed,recommendation_helpful,feedback_rating,app_feedback")
             .eq("user_id", user_id)
             .execute()
         )
+        feedback_df = pd.DataFrame(feedback_response.data or [])
     except Exception:
-        return pd.DataFrame()
+        feedback_df = pd.DataFrame()
 
-    history_df = pd.DataFrame(daily_response.data or [])
-
-    if history_df.empty:
-        return history_df
-
-    feedback_df = pd.DataFrame(feedback_response.data or [])
     if not feedback_df.empty:
         history_df = history_df.merge(
             feedback_df,
@@ -1068,6 +1239,31 @@ def get_user_daily_history(user_id: str) -> pd.DataFrame:
     history_df["depression_score"] = trend_metrics.apply(lambda t: t.get("depression_score"))
     history_df["mental_health_pct"] = trend_metrics.apply(lambda t: t.get("mental_health_pct"))
     return history_df
+
+
+def fetch_daily_inputs_from_supabase(user_id: str) -> pd.DataFrame:
+    """Attempt to fetch daily_inputs rows for a user directly from Supabase.
+
+    This is a non-fallback helper that returns an empty DataFrame when Supabase
+    is not available or the query fails.
+    """
+    try:
+        client = get_required_supabase_client()
+        response = (
+            client.table("daily_inputs")
+            .select("entry_id,user_id,input_date,submitted_at,prediction_json,cluster")
+            .eq("user_id", user_id)
+            .order("input_date", desc=False)
+            .execute()
+        )
+    except Exception:
+        return pd.DataFrame()
+
+    try:
+        df = pd.DataFrame(response.data or [])
+        return df
+    except Exception:
+        return pd.DataFrame()
 
 
 def parse_prediction_json(prediction_json: Any) -> dict:
@@ -1257,30 +1453,35 @@ def render_admin_page() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def save_user_response_to_json(answers: dict, prediction: dict, cluster: int) -> None:
-    """Save user response to JSON file."""
+def save_user_response_to_json(answers: dict, prediction: dict, cluster: int, user_id: Optional[str] = None) -> None:
+    """Save user response to JSON file. Include `user_id` when available so local history
+    can be used as a fallback when Supabase is unavailable or prior anonymous runs were
+    performed before login.
+    """
     try:
         response_data = {
+            "entry_id": str(uuid.uuid4()),
             "timestamp": datetime.now().isoformat(),
+            "user_id": user_id,
             "user_inputs": answers,
             "predictions": prediction,
-            "cluster": cluster
+            "cluster": cluster,
         }
-        
+
         all_responses = []
-        
+
         if os.path.exists(USER_RESPONSES_JSON_PATH):
-            with open(USER_RESPONSES_JSON_PATH, 'r') as f:
+            with open(USER_RESPONSES_JSON_PATH, "r", encoding="utf-8") as f:
                 try:
                     all_responses = json.load(f)
-                except:
+                except Exception:
                     all_responses = []
-        
+
         all_responses.append(response_data)
-        
-        with open(USER_RESPONSES_JSON_PATH, 'w') as f:
+
+        with open(USER_RESPONSES_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(all_responses, f, indent=2)
-        
+
     except Exception:
         # JSON export is optional and should not block the UI flow.
         pass
@@ -1447,18 +1648,6 @@ def render_user_progress_section(user_id: str) -> None:
     history_df["predicted_class_display"] = history_df["predicted_class"].apply(normalize_prediction_class_label)
     history_df["predicted_class_score"] = history_df["predicted_class_display"].apply(prediction_class_to_score)
 
-    latest = history_df.iloc[-1]
-    latest_class = str(latest.get("predicted_class_display") or "Unknown")
-
-    st.markdown(
-        f"""
-        <div class='analysis-note analysis-note-good'>
-            <strong>Latest predicted class:</strong> {latest_class}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     class_colors = {
         "Very Low Burnout": "#2E8B57",
         "Low Burnout": "#C39A3A",
@@ -1498,78 +1687,6 @@ def render_user_progress_section(user_id: str) -> None:
         showlegend=False,
     )
     st.plotly_chart(class_fig, use_container_width=True)
-
-    badge_html = ["<div style='display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 6px;'>"]
-    for _, row in history_df.iterrows():
-        cls = str(row.get("predicted_class_display") or "Unknown")
-        color = class_colors.get(cls, "#7A6B8F")
-        badge_html.append(
-            f"""
-            <div style='background:{color}; color:#FFFFFF; border-radius:999px; padding:8px 12px; font-size:12px; font-weight:700;'>
-                {row['input_date']} · {cls}
-            </div>
-            """
-        )
-    badge_html.append("</div>")
-    st.markdown("".join(badge_html), unsafe_allow_html=True)
-
-    st.markdown("#### 📝 Recommendation & App Feedback")
-    today_value = date.today().isoformat()
-    today_row = history_df[history_df["input_date"] == today_value]
-    if today_row.empty:
-        st.info("Submit today's survey first, then share whether recommendations helped.")
-    else:
-        existing = today_row.iloc[-1]
-        followed_default = None if pd.isna(existing.get("recommendation_followed")) else bool(existing.get("recommendation_followed"))
-        helpful_default = None if pd.isna(existing.get("recommendation_helpful")) else bool(existing.get("recommendation_helpful"))
-        rating_default = None if pd.isna(existing.get("feedback_rating")) else int(existing.get("feedback_rating"))
-        feedback_default = str(existing.get("app_feedback") or "")
-
-        if "history_feedback_form" not in st.session_state:
-            st.session_state["history_feedback_form"] = False
-
-        with st.form("history_feedback_form"):
-            recommendation_followed = st.radio(
-                "Did you follow the recommendation?",
-                options=["Not sure", "Yes", "No"],
-                index=0 if followed_default is None else (1 if followed_default else 2),
-                horizontal=True,
-            )
-            recommendation_helpful = st.radio(
-                "Was it helpful?",
-                options=["Not sure", "Yes", "No"],
-                index=0 if helpful_default is None else (1 if helpful_default else 2),
-                horizontal=True,
-            )
-            feedback_rating = st.slider(
-                "Overall app rating",
-                min_value=1,
-                max_value=5,
-                value=rating_default or 3,
-            )
-            app_feedback = st.text_area(
-                "Any feedback for AuraCheck?",
-                value=feedback_default,
-                height=110,
-            )
-            submitted = st.form_submit_button("Save feedback")
-
-        if submitted:
-            followed_value = None if recommendation_followed == "Not sure" else recommendation_followed == "Yes"
-            helpful_value = None if recommendation_helpful == "Not sure" else recommendation_helpful == "Yes"
-            ok, msg = upsert_daily_feedback(
-                user_id=user_id,
-                input_date=today_value,
-                recommendation_followed=followed_value,
-                recommendation_helpful=helpful_value,
-                feedback_rating=feedback_rating,
-                app_feedback=app_feedback,
-            )
-            if ok:
-                st.success("Thanks! Your feedback has been saved.")
-                st.rerun()
-            else:
-                st.warning(msg)
 
 
 def is_admin_user() -> bool:
@@ -1659,6 +1776,14 @@ def render_auth_page(auth_page: str) -> None:
                     st.session_state["current_user_email"] = user_data["email"]
                     st.session_state["current_user_name"] = f"{user_data['first_name']} {user_data['last_name']}"
                     st.session_state["current_user_phone_number"] = user_data.get("phone_number", "")
+                    # Attempt to sync any local JSON history entries for this user to Supabase.
+                    try:
+                        synced_count = sync_local_history_to_supabase(user_data["user_id"])
+                        if synced_count:
+                            st.info(f"✅ Synced {synced_count} local history entr{'y' if synced_count==1 else 'ies'} to your account.")
+                    except Exception:
+                        # Best-effort; do not block login on sync failures.
+                        pass
                     st.session_state["auth_page"] = "profile"
                     st.success("✅ Login successful.")
                     st.rerun()
@@ -1710,6 +1835,10 @@ def render_auth_page(auth_page: str) -> None:
             st.text_input("Email", value=current_email, disabled=True)
         with detail_col_2:
             st.text_input("Phone Number", value=current_phone, disabled=True)
+
+        if current_user_id and ensure_demo_history_for_test_account(current_user_id, current_email):
+            st.info("Seeded 10 days of demo history for the test account.")
+            st.rerun()
 
         saved_static_answers = get_merged_static_answers(current_user_id) if current_user_id else {}
         latest_daily_static_answers = get_latest_daily_static_answers(current_user_id) if current_user_id else {}
@@ -1815,6 +1944,18 @@ def render_auth_page(auth_page: str) -> None:
         st.markdown("#### Daily History")
         st.caption("Your saved survey submissions and burnout-class trend are shown below.")
         if current_user_id:
+            # Allow explicit refresh from Supabase for immediate verification
+            refresh_col, spacer = st.columns([1, 3])
+            with refresh_col:
+                if st.button("🔁 Refresh history from Supabase", key="refresh_history_btn"):
+                    sup_df = fetch_daily_inputs_from_supabase(current_user_id)
+                    if not sup_df.empty:
+                        st.success(f"Fetched {len(sup_df)} rows from Supabase.")
+                    else:
+                        st.info("No rows returned from Supabase or service unavailable.")
+                    # Rerun so the profile page picks up any newly synced rows
+                    st.rerun()
+
             render_user_progress_section(current_user_id)
 
         if st.session_state.get("last_data_save_error"):
@@ -1853,7 +1994,7 @@ def main():
         st.warning("⚠️ Admin view is restricted to authorized admin only.")
 
     if st.session_state.get("auth_page") in {"signup", "login", "profile"}:
-        render_auth_page(st.session_state.get("auth_page"))
+        render_auth_page(str(st.session_state.get("auth_page") or "main"))
         return
 
     if st.session_state.get("auth_page") == "model_analysis":
@@ -2022,10 +2163,11 @@ def main():
                     st.session_state["last_cluster"] = cluster
                     st.session_state["show_results"] = True
 
-                    save_user_response_to_json(answers, prediction, cluster)
+                    save_user_response_to_json(answers, prediction, cluster, user_id=st.session_state.get("current_user_id"))
                     if st.session_state.get("current_user_id"):
+                        current_user_id = str(st.session_state.get("current_user_id") or "")
                         saved_to_sql, save_message = save_user_daily_input_to_sql(
-                            user_id=st.session_state.get("current_user_id"),
+                            user_id=current_user_id,
                             answers=answers,
                             prediction=prediction,
                             cluster=cluster,
