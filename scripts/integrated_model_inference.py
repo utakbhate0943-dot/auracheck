@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -63,8 +64,16 @@ def _canonical(s: Any) -> str:
 def _as_float(v: Any, default: float = 5.0) -> float:
     try:
         if isinstance(v, str):
-            digits = "".join(ch for ch in v if ch.isdigit() or ch == ".")
-            return float(digits) if digits else default
+            text = v.strip()
+            if not text:
+                return default
+
+            numbers = [float(match) for match in re.findall(r"\d+(?:\.\d+)?", text)]
+            if not numbers:
+                return default
+            if "-" in text and len(numbers) >= 2:
+                return float(sum(numbers[:2]) / 2.0)
+            return float(numbers[0])
         return float(v)
     except Exception:
         return default
