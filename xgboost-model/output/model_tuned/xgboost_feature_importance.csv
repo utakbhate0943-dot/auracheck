@@ -1,0 +1,24 @@
+Feature,Importance
+Course_Engineering,0.07744437
+Course_Others,0.072827324
+Course_Computer Science,0.05897863
+Course_Law,0.048057564
+Course_Medical,0.04528044
+Relationship_Status_Married,0.041111693
+Family_History,0.040419202
+Gender_Male,0.040285032
+CGPA,0.04002146
+Semester_Credit_Load,0.039931763
+Substance_Use,0.03985309
+Age,0.039316796
+Residence_Type_On-Campus,0.03930552
+Financial_Stress,0.039288674
+Social_Support,0.038623843
+Relationship_Status_Single,0.038516413
+Physical_Activity,0.038186077
+Extracurricular_Involvement,0.037949838
+Counseling_Service_Use,0.03782534
+Sleep_Quality,0.03720505
+Diet_Quality,0.03704696
+Residence_Type_With Family,0.03679567
+Chronic_Illness,0.035729285
