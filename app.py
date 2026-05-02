@@ -11,6 +11,7 @@ import uuid
 import secrets
 import hashlib
 import hmac
+import re
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -242,7 +243,7 @@ def render_model_analysis_page() -> None:
         </style>
         <div class='analysis-hero'>
             <p class='analysis-title'>Model Analysis and Recommendation</p>
-            <p class='analysis-subtitle'>Baseline logistic regression, random forest, XGBoost, and KMeans are compared using saved project outputs and evaluation artifacts.</p>
+            <p class='analysis-subtitle'>Baseline logistic regression, random forest, and XGBoost are compared with confusion matrices; KMeans is shown as an unsupervised alignment check.</p>
             <div class='analysis-pill-row'>
                 <span class='analysis-pill analysis-pill-good'>Prediction Winner: Random Forest</span>
                 <span class='analysis-pill analysis-pill-mid'>Supervised Benchmark: XGBoost</span>
@@ -329,6 +330,7 @@ def render_model_analysis_page() -> None:
         )
 
     st.markdown("### Performance comparison")
+    st.caption("Supervised models are compared directly by prediction metrics; KMeans is shown separately as a clustering check.")
     comparison_df = build_model_comparison_table(analysis_data)
     st.dataframe(comparison_df, use_container_width=True, hide_index=True)
 
@@ -383,9 +385,10 @@ def render_model_analysis_page() -> None:
         st.plotly_chart(kmeans_metric_fig, use_container_width=True)
 
     st.markdown("### Evaluation details")
+    st.caption("Baseline, Random Forest, and XGBoost include confusion-matrix views. KMeans does not produce a standard confusion matrix, so its clustering quality is shown with NMI, ARI, and silhouette.")
     eval_cols = st.columns(3)
     with eval_cols[0]:
-        st.markdown("#### Baseline model metrics")
+        st.markdown("#### Baseline confusion metrics")
         st.dataframe(pd.DataFrame([baseline_metrics]), use_container_width=True, hide_index=True)
         if not baseline_sens_spec.empty:
             st.dataframe(baseline_sens_spec, use_container_width=True, hide_index=True)
@@ -407,7 +410,7 @@ def render_model_analysis_page() -> None:
             )
             st.plotly_chart(baseline_heatmap, use_container_width=True)
     with eval_cols[1]:
-        st.markdown("#### Random Forest metrics")
+        st.markdown("#### Random Forest confusion metrics")
         rf_metrics_table = pd.DataFrame([{
             "accuracy": float(rf_summary.get("output", {}).get("accuracy", 0.0)),
             "macro_precision": float(rf_eval.get("macro avg", {}).get("precision", 0.0)),
@@ -437,7 +440,7 @@ def render_model_analysis_page() -> None:
             )
             st.plotly_chart(rf_heatmap, use_container_width=True)
     with eval_cols[2]:
-        st.markdown("#### XGBoost metrics")
+        st.markdown("#### XGBoost confusion metrics")
         xgb_metrics_table = pd.DataFrame([{
             "accuracy": float(xgb_metrics.get("Accuracy", 0.0)),
             "macro_recall": float(xgb_metrics.get("Macro Recall", 0.0)),
@@ -473,7 +476,7 @@ def render_model_analysis_page() -> None:
             <div style='font-size:18px; font-weight:800; color:#1C5C36; margin-bottom:8px;'>Recommended Production Model: Random Forest</div>
             <div style='font-size:14px; font-weight:600; color:#2C3A3A; line-height:1.6;'>
                 Random Forest is the best choice for final predictive use because it gives the <strong>highest supervised accuracy</strong> and
-                <strong>better macro-level recall</strong> than the baseline and XGBoost outputs in this repo. Keep baseline logistic regression for interpretability checks,
+                <strong>better macro-level recall</strong> than the baseline and XGBoost outputs in this repo. Keep baseline logistic regression and XGBoost for comparison,
                 and keep KMeans for exploratory segmentation only.
             </div>
         </div>
@@ -495,10 +498,10 @@ def render_model_analysis_page() -> None:
 def get_question_for_field(field_name: str) -> str:
     """Get conversational question for a given field."""
     questions = {
-        "Age": "🎂 What's your age group?",
+        "Age": "🎂 What's your age?",
         "Course": "📚 What's your course/major?",
         "Gender": "👤 How do you identify?",
-        "CGPA": "📊 What's your current GPA/CGPA?",
+        "CGPA": "📊 What's your current CGPA?",
         "Sleep_Quality": "😴 How's your sleep quality?",
         "Physical_Activity": "🏃 How active are you physically?",
         "Diet_Quality": "🥗 How's your diet quality?",
@@ -518,10 +521,10 @@ def get_question_for_field(field_name: str) -> str:
 def get_field_options(field_name: str) -> list:
     """Get predefined button options for each field."""
     options = {
-        "Age": ["18-20", "21-23", "24-26", "27-30", "30+"],
+        "Age": [],
         "Gender": ["🧑 Male", "👩 Female", "🧑‍🤝‍🧑 Other"],
         "Course": ["CS", "Business", "Engineering", "Medicine", "Arts", "Science"],
-        "CGPA": ["3.5-4.0", "3.0-3.5", "2.5-3.0", "2.0-2.5", "Below 2.0"],
+        "CGPA": [],
         "Sleep_Quality": ["😴 Poor (1)", "😴 Fair (2)", "😴 Good (3)", "😴 Very Good (4)", "😴 Excellent (5)"],
         "Physical_Activity": ["🔴 None (1)", "🟠 Minimal (2)", "🟡 Moderate (3)", "🟢 Active (4)", "💚 Very Active (5)"],
         "Diet_Quality": ["🔴 Poor (1)", "🟠 Fair (2)", "🟡 Good (3)", "🟢 Very Good (4)", "💚 Excellent (5)"],
@@ -537,6 +540,35 @@ def get_field_options(field_name: str) -> list:
         "Residence_Type": ["Home", "Hostel", "Apartment", "Dorm", "Other"],
     }
     return options.get(field_name, [])
+
+
+def _parse_numeric_answer(value: Any, default: float) -> float:
+    """Parse a numeric answer from numbers, strings, or legacy range labels."""
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value or "").strip()
+    if not text:
+        return float(default)
+
+    matches = re.findall(r"\d+(?:\.\d+)?", text)
+    if not matches:
+        return float(default)
+
+    numbers = [float(match) for match in matches]
+    if "-" in text and len(numbers) >= 2:
+        return float(sum(numbers[:2]) / 2.0)
+    return float(numbers[0])
+
+
+def _format_age_value(value: Any) -> int:
+    """Return a safe integer age for UI defaults and storage."""
+    return int(round(_parse_numeric_answer(value, 21.0)))
+
+
+def _format_cgpa_value(value: Any) -> float:
+    """Return a safe CGPA value for UI defaults and storage."""
+    return round(_parse_numeric_answer(value, 3.0), 2)
 
 
 # Persistence layer (Supabase-only)
@@ -945,7 +977,7 @@ def get_merged_static_answers(user_id: str) -> dict:
 def save_user_static_answer_if_missing(user_id: str, field_name: str, field_value: str) -> None:
     """Persist first submitted baseline answer only once for the user."""
     column_name = STATIC_USER_FIELDS.get(field_name)
-    value = (field_value or "").strip()
+    value = str(field_value or "").strip()
     if not column_name or not value:
         return
 
@@ -977,7 +1009,7 @@ def save_user_static_answers(user_id: str, answers: dict) -> None:
     """Persist editable static survey answers for a logged-in user."""
     payload = {}
     for field_name, column_name in STATIC_USER_FIELDS.items():
-        value = (answers.get(field_name) or "").strip()
+        value = str(answers.get(field_name) or "").strip()
         if value:
             payload[column_name] = value
 
@@ -1856,14 +1888,14 @@ def render_auth_page(auth_page: str) -> None:
             saved_static_answers = merged_static_answers
 
         static_profile_defaults = {
-            "Age": (saved_static_answers.get("Age") or "").strip(),
-            "Course": (saved_static_answers.get("Course") or "").strip(),
-            "Gender": (saved_static_answers.get("Gender") or "").strip(),
-            "CGPA": (saved_static_answers.get("CGPA") or "").strip(),
-            "Relationship": (saved_static_answers.get("Relationship") or "").strip(),
-            "Family_History": (saved_static_answers.get("Family_History") or "").strip(),
-            "Semester": (saved_static_answers.get("Semester") or "").strip(),
-            "Residence_Type": (saved_static_answers.get("Residence_Type") or "").strip(),
+            "Age": str(saved_static_answers.get("Age") or "").strip(),
+            "Course": str(saved_static_answers.get("Course") or "").strip(),
+            "Gender": str(saved_static_answers.get("Gender") or "").strip(),
+            "CGPA": str(saved_static_answers.get("CGPA") or "").strip(),
+            "Relationship": str(saved_static_answers.get("Relationship") or "").strip(),
+            "Family_History": str(saved_static_answers.get("Family_History") or "").strip(),
+            "Semester": str(saved_static_answers.get("Semester") or "").strip(),
+            "Residence_Type": str(saved_static_answers.get("Residence_Type") or "").strip(),
         }
 
         st.markdown("#### Personal Details")
@@ -1878,10 +1910,13 @@ def render_auth_page(auth_page: str) -> None:
             
             with profile_col_1:
                 st.markdown("**Your Saved Answers**")
-                age_value = st.text_input(
+                age_value = st.number_input(
                     "Age",
-                    value=static_profile_defaults["Age"],
-                    placeholder="e.g., 21-23"
+                    min_value=10,
+                    max_value=100,
+                    step=1,
+                    value=_format_age_value(static_profile_defaults["Age"]),
+                    format="%d"
                 )
                 gender_value = st.text_input(
                     "Gender",
@@ -1906,10 +1941,13 @@ def render_auth_page(auth_page: str) -> None:
                     value=static_profile_defaults["Course"],
                     placeholder="e.g., CS"
                 )
-                cgpa_value = st.text_input(
+                cgpa_value = st.number_input(
                     "CGPA",
-                    value=static_profile_defaults["CGPA"],
-                    placeholder="e.g., 3.5-4.0"
+                    min_value=0.0,
+                    max_value=4.0,
+                    step=0.01,
+                    value=_format_cgpa_value(static_profile_defaults["CGPA"]),
+                    format="%.2f"
                 )
                 family_history_value = st.text_input(
                     "Family History",
@@ -1928,10 +1966,10 @@ def render_auth_page(auth_page: str) -> None:
             save_user_static_answers(
                 current_user_id,
                 {
-                    "Age": age_value,
+                    "Age": str(int(age_value)),
                     "Course": course_value,
                     "Gender": gender_value,
-                    "CGPA": cgpa_value,
+                    "CGPA": f"{float(cgpa_value):.2f}".rstrip("0").rstrip("."),
                     "Relationship": relationship_value,
                     "Family_History": family_history_value,
                     "Semester": semester_value,
@@ -2113,7 +2151,39 @@ def main():
             
             st.markdown(f"<div class='question-text'>{question}</div>", unsafe_allow_html=True)
             
-            if options:
+            if current_field == "Age":
+                age_value = st.number_input(
+                    "Age",
+                    min_value=10,
+                    max_value=100,
+                    step=1,
+                    value=_format_age_value(answers.get(current_field, 21)),
+                    format="%d",
+                    key=f"num_{current_field}",
+                )
+                if st.button("Save Age", key=f"save_{current_field}", width="stretch"):
+                    answers[current_field] = str(int(age_value))
+                    if current_user_id and current_field in STATIC_USER_FIELDS:
+                        save_user_static_answer_if_missing(current_user_id, current_field, answers[current_field])
+                    st.session_state["last_answers"] = answers
+                    st.rerun()
+            elif current_field == "CGPA":
+                cgpa_value = st.number_input(
+                    "CGPA",
+                    min_value=0.0,
+                    max_value=4.0,
+                    step=0.01,
+                    value=_format_cgpa_value(answers.get(current_field, 3.0)),
+                    format="%.2f",
+                    key=f"num_{current_field}",
+                )
+                if st.button("Save CGPA", key=f"save_{current_field}", width="stretch"):
+                    answers[current_field] = f"{float(cgpa_value):.2f}".rstrip("0").rstrip(".")
+                    if current_user_id and current_field in STATIC_USER_FIELDS:
+                        save_user_static_answer_if_missing(current_user_id, current_field, answers[current_field])
+                    st.session_state["last_answers"] = answers
+                    st.rerun()
+            elif options:
                 for idx, option in enumerate(options):
                     if st.button(option, key=f"btn_{current_field}_{idx}", width="stretch"):
                         clean_value = option.split("(")[0].strip() if "(" in option else option
