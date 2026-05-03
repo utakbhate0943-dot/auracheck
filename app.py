@@ -13,15 +13,19 @@ import hashlib
 import hmac
 import re
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+import joblib
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from openai import OpenAI
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
 from supabase import create_client
 
 load_dotenv(override=True)
@@ -35,10 +39,10 @@ BASELINE_METRICS_PATH = os.path.join(BASELINE_OUTPUT_DIR, "production_pruned_mul
 BASELINE_CM_PATH = os.path.join(BASELINE_OUTPUT_DIR, "final_selected_baseline_confusion_matrix.csv")
 BASELINE_SENS_SPEC_PATH = os.path.join(BASELINE_OUTPUT_DIR, "final_selected_baseline_sensitivity_specificity.csv")
 RF_SUMMARY_PATH = os.path.join(APP_DIR, "ml_randomforest", "outputs", "random_forest_outputs_summary.json")
-XGB_MODEL2_METRICS_PATH = os.path.join(APP_DIR, "xgboost-model", "output", "model_2", "xgboost_metrics.csv")
-XGB_MODEL2_CM_PATH = os.path.join(APP_DIR, "xgboost-model", "output", "model_2", "xgboost_confusion_matrix_tuned.csv")
-KMEANS_BASELINE_RESULTS_PATH = os.path.join(APP_DIR, "Unsupervised", "outputs", "baseline_kmeans", "kmeans_results.json")
-KMEANS_BENCHMARK_RESULTS_PATH = os.path.join(APP_DIR, "Unsupervised", "outputs", "kmeans_benchmark", "unsupervised_experiments_results.json")
+XGB_MODEL2_METRICS_PATH = os.path.join(APP_DIR, "xgboost-model", "output", "model_tuned", "xgboost_metrics.csv")
+XGB_MODEL2_CM_PATH = os.path.join(APP_DIR, "xgboost-model", "output", "model_tuned", "xgboost_confusion_matrix_tuned.csv")
+KMEANS_PCA2_MODEL_DIR = os.path.join(APP_DIR, "Unsupervised", "outputs", "pca2_kmeans_model")
+DATASET_FINAL_PATH = os.path.join(APP_DIR, "Dataset", "students_mental_health_survey_with_burnout_final.csv")
 
 REQUIRED_FIELDS = ["Age", "Course", "Gender", "CGPA", "Sleep_Quality", "Physical_Activity", "Diet_Quality", "Social_Support", "Relationship", "Substance_Use", "Counseling", "Family_History", "Chronic_Illness", "Financial_Stress", "Extracurricular", "Semester", "Residence_Type"]
 POSITIVE_THOUGHTS = ["🌟 You are capable of overcoming challenges", "💚 Your mental health matters and deserves attention", "🌈 Every day is a fresh opportunity for growth", "💫 You have strength within you", "🌸 Self-care is not selfish, it's essential", "⭐ Progress over perfection always", "🎯 Your feelings are valid and important", "🌊 Challenges help you grow stronger", "💡 You deserve to be happy and healthy", "🦋 Transformation starts with self-compassion"]
@@ -81,11 +85,79 @@ def load_json_file(path: str, default: Optional[dict] = None) -> dict:
         return default if default is not None else {}
 
 
+def load_kmeans_pca2_metrics() -> dict:
+    """Load PCA2 KMeans artifacts and compute alignment metrics for comparison."""
+    model_dir = Path(KMEANS_PCA2_MODEL_DIR)
+    preprocessor_path = model_dir / "pca2_kmeans_preprocessor.joblib"
+    pca_path = model_dir / "pca2_kmeans_pca.joblib"
+    model_path = model_dir / "pca2_kmeans_model.joblib"
+    metadata_path = model_dir / "pca2_kmeans_metadata.json"
+
+    required_paths = [preprocessor_path, pca_path, model_path, metadata_path, Path(DATASET_FINAL_PATH)]
+    if any(not p.exists() for p in required_paths):
+        return {}
+
+    try:
+        preprocessor = joblib.load(preprocessor_path)
+        pca = joblib.load(pca_path)
+        kmeans = joblib.load(model_path)
+        with metadata_path.open("r", encoding="utf-8") as f:
+            metadata = json.load(f)
+
+        df = pd.read_csv(DATASET_FINAL_PATH)
+        feature_cols = metadata.get("features_raw", [])
+        if not feature_cols or any(c not in df.columns for c in feature_cols):
+            return {}
+        if "burnout_raw_score" not in df.columns:
+            return {}
+
+        X = df[feature_cols].copy()
+        num_cols = [c for c in metadata.get("numeric_features", []) if c in X.columns]
+        cat_cols = [c for c in metadata.get("categorical_features", []) if c in X.columns]
+
+        for c in num_cols:
+            if X[c].isnull().any():
+                X[c] = X[c].fillna(X[c].median())
+        for c in cat_cols:
+            if X[c].isnull().any():
+                X[c] = X[c].fillna("Unknown")
+
+        X_proc = preprocessor.transform(X)
+        X_pca = pca.transform(X_proc)
+        clusters = np.asarray(kmeans.predict(X_pca), dtype=int)
+
+        y_true = pd.qcut(
+            df["burnout_raw_score"].astype(float),
+            q=4,
+            labels=[0, 1, 2, 3],
+            duplicates="drop",
+        ).astype(int).to_numpy()
+
+        mapping_df = pd.DataFrame({"cluster": clusters, "burnout_q": y_true})
+        cluster_to_class = mapping_df.groupby("cluster")["burnout_q"].agg(lambda s: int(s.value_counts().idxmax())).to_dict()
+        mapped_classes = np.asarray([cluster_to_class.get(int(c), 1) for c in clusters], dtype=int)
+
+        silhouette = 0.0
+        if len(np.unique(clusters)) > 1 and len(clusters) > len(np.unique(clusters)):
+            silhouette = float(silhouette_score(X_pca, clusters))
+
+        return {
+            "model_type": metadata.get("model_type", "PCA(2) + KMeans(4)"),
+            "normalized_mutual_info": float(normalized_mutual_info_score(y_true, mapped_classes)),
+            "adjusted_rand_index": float(adjusted_rand_score(y_true, mapped_classes)),
+            "silhouette": silhouette,
+            "n_clusters": int(metadata.get("n_clusters", len(np.unique(clusters)))),
+            "source": "predict_pca2_kmeans.py artifacts",
+        }
+    except Exception:
+        return {}
+
+
 def load_model_analysis_data() -> dict:
     """Load comparison data for the model analysis page."""
     baseline_metrics = {}
     baseline_cm = pd.DataFrame()
-    baseline_sens_spec = pd.DataFrame()
+    # baseline_sens_spec = pd.DataFrame()
     xgb_metrics = {}
     xgb_cm = pd.DataFrame()
 
@@ -97,8 +169,8 @@ def load_model_analysis_data() -> dict:
     if os.path.exists(BASELINE_CM_PATH):
         baseline_cm = pd.read_csv(BASELINE_CM_PATH)
 
-    if os.path.exists(BASELINE_SENS_SPEC_PATH):
-        baseline_sens_spec = pd.read_csv(BASELINE_SENS_SPEC_PATH)
+    # if os.path.exists(BASELINE_SENS_SPEC_PATH):
+    #     baseline_sens_spec = pd.read_csv(BASELINE_SENS_SPEC_PATH)
 
     rf_summary = load_json_file(RF_SUMMARY_PATH, {})
 
@@ -113,22 +185,20 @@ def load_model_analysis_data() -> dict:
     if os.path.exists(XGB_MODEL2_CM_PATH):
         xgb_cm = pd.read_csv(XGB_MODEL2_CM_PATH, index_col=0)
 
-    kmeans_baseline = load_json_file(KMEANS_BASELINE_RESULTS_PATH, {})
-    kmeans_benchmark = load_json_file(KMEANS_BENCHMARK_RESULTS_PATH, {})
+    kmeans_pca2 = load_kmeans_pca2_metrics()
 
     return {
         "baseline": {
             "metrics": baseline_metrics,
             "confusion_matrix": baseline_cm,
-            "sensitivity_specificity": baseline_sens_spec,
+            # "sensitivity_specificity": baseline_sens_spec,
         },
         "random_forest": rf_summary,
         "xgboost": {
             "metrics": xgb_metrics,
             "confusion_matrix": xgb_cm,
         },
-        "kmeans_baseline": kmeans_baseline,
-        "kmeans_benchmark": kmeans_benchmark,
+        "kmeans_pca2": kmeans_pca2,
     }
 
 
@@ -139,9 +209,7 @@ def build_model_comparison_table(analysis_data: dict) -> pd.DataFrame:
     rf_eval = rf_summary.get("evaluation_matrix", {}) if isinstance(rf_summary, dict) else {}
     rf_output = rf_summary.get("output", {}) if isinstance(rf_summary, dict) else {}
     xgb_metrics = analysis_data.get("xgboost", {}).get("metrics", {})
-    kmeans_baseline = analysis_data.get("kmeans_baseline", {})
-    kmeans_benchmark = analysis_data.get("kmeans_benchmark", {})
-    kmeans_best = kmeans_benchmark.get("best_overall", {}) if isinstance(kmeans_benchmark, dict) else {}
+    kmeans_pca2 = analysis_data.get("kmeans_pca2", {}) if isinstance(analysis_data.get("kmeans_pca2", {}), dict) else {}
 
     rows = [
         {
@@ -159,21 +227,93 @@ def build_model_comparison_table(analysis_data: dict) -> pd.DataFrame:
             "Notes": "Best supervised accuracy in this project; non-linear model captures more structure.",
         },
         {
-            "Model": "XGBoost (tuned model_2)",
+            "Model": "XGBoost (tuned model_tuned)",
             "Type": "Supervised candidate",
             "Primary metric": float(xgb_metrics.get("Accuracy", 0.0)),
             "Secondary metric": float(xgb_metrics.get("Macro Recall", 0.0)),
-            "Notes": "Gradient boosting benchmark from xgboost-model outputs; evaluated from tuned model_2 artifacts.",
+            "Notes": "Gradient boosting benchmark from xgboost-model outputs; evaluated from tuned model_tuned artifacts.",
         },
         {
-            "Model": "KMeans baseline / benchmark",
+            "Model": "KMeans PCA2 (trained model)",
             "Type": "Unsupervised segmentation",
-            "Primary metric": float(kmeans_best.get("normalized_mutual_info", kmeans_baseline.get("alignment_to_burnout_labels", {}).get("normalized_mutual_info", 0.0))),
-            "Secondary metric": float(kmeans_best.get("silhouette", kmeans_baseline.get("metrics_unsupervised", {}).get("silhouette", 0.0))),
-            "Notes": "Useful for clustering/segmentation only; label alignment is near zero.",
+            "Primary metric": float(kmeans_pca2.get("normalized_mutual_info", 0.0)),
+            "Secondary metric": float(kmeans_pca2.get("silhouette", 0.0)),
+            "Notes": "Computed from PCA(2)+KMeans trained artifacts used by predict_pca2_kmeans.py.",
         },
     ]
     return pd.DataFrame(rows)
+
+
+def style_eval_table(df: pd.DataFrame, *, hide_index: bool = False, integer_values: bool = False):
+    """Return a centered, high-contrast table style for evaluation sections."""
+    if df is None or df.empty:
+        return df
+
+    def _format_value(value: Any) -> Any:
+        if isinstance(value, bool):
+            return str(value)
+        if isinstance(value, int):
+            return f"{value:d}" if integer_values else f"{value:.4f}"
+        if isinstance(value, float):
+            return f"{value:.0f}" if integer_values else f"{value:.4f}"
+        return value
+
+    styled = (
+        df.style
+        .format(_format_value, na_rep="-")
+        .set_properties(subset=pd.IndexSlice[:, :], **{
+            "text-align": "center",
+            "font-weight": "700",
+            "color": "#1E1633",
+            "background-color": "#E7DEEF",
+        })
+        .set_table_styles([
+            {
+                "selector": "table",
+                "props": [
+                    ("border-collapse", "collapse"),
+                    ("border", "1px solid #BBAFD1"),
+                ],
+            },
+            {
+                "selector": "th",
+                "props": [
+                    ("text-align", "center"),
+                    ("font-weight", "800"),
+                    ("color", "#1B1330"),
+                    ("background-color", "#D3C4E6"),
+                    ("border", "1px solid #B9A9CF"),
+                ],
+            },
+            {
+                "selector": "td",
+                "props": [
+                    ("text-align", "center"),
+                    ("font-weight", "700"),
+                    ("color", "#1E1633"),
+                    ("border", "1px solid #C5B7D8"),
+                ],
+            },
+            {
+                "selector": "tbody th",
+                "props": [
+                    ("text-align", "center"),
+                    ("font-weight", "800"),
+                    ("color", "#1B1330"),
+                    ("background-color", "#DDD1EB"),
+                    ("border", "1px solid #B9A9CF"),
+                ],
+            },
+        ])
+    )
+
+    if hide_index:
+        try:
+            styled = styled.hide(axis="index")
+        except Exception:
+            pass
+
+    return styled
 
 
 def render_model_analysis_page() -> None:
@@ -181,15 +321,13 @@ def render_model_analysis_page() -> None:
     analysis_data = load_model_analysis_data()
     baseline_metrics = analysis_data.get("baseline", {}).get("metrics", {})
     baseline_cm = analysis_data.get("baseline", {}).get("confusion_matrix", pd.DataFrame())
-    baseline_sens_spec = analysis_data.get("baseline", {}).get("sensitivity_specificity", pd.DataFrame())
+    # baseline_sens_spec = analysis_data.get("baseline", {}).get("sensitivity_specificity", pd.DataFrame())
     rf_summary = analysis_data.get("random_forest", {}) if isinstance(analysis_data.get("random_forest", {}), dict) else {}
     rf_eval = rf_summary.get("evaluation_matrix", {})
     rf_cm = rf_summary.get("confusion_matrix", {})
     xgb_metrics = analysis_data.get("xgboost", {}).get("metrics", {})
     xgb_cm = analysis_data.get("xgboost", {}).get("confusion_matrix", pd.DataFrame())
-    kmeans_baseline = analysis_data.get("kmeans_baseline", {})
-    kmeans_benchmark = analysis_data.get("kmeans_benchmark", {})
-    kmeans_best = kmeans_benchmark.get("best_overall", {}) if isinstance(kmeans_benchmark, dict) else {}
+    kmeans_pca2 = analysis_data.get("kmeans_pca2", {}) if isinstance(analysis_data.get("kmeans_pca2", {}), dict) else {}
 
     st.markdown("<div class='content-placeholder'>", unsafe_allow_html=True)
     st.markdown(
@@ -240,6 +378,62 @@ def render_model_analysis_page() -> None:
             .analysis-note-good { background: #EAF8EE; color: #195C34; border: 1px solid #9FD8B3; }
             .analysis-note-warn { background: #FFF7E5; color: #7C5500; border: 1px solid #E7C46B; }
             .analysis-note-risk { background: #FFEDEF; color: #7C1F2A; border: 1px solid #E6A8B0; }
+            .metric-card {
+                border-radius: 14px;
+                overflow: hidden;
+                border: 1px solid #BCAED3;
+                background: #EEE6F5;
+                min-height: 156px;
+            }
+            .metric-card-head {
+                padding: 10px 12px;
+                text-align: center;
+                font-size: 14px;
+                font-weight: 800;
+                color: #F7F2FF;
+                background: #4A3A66;
+                letter-spacing: 0.2px;
+            }
+            .metric-card-body {
+                padding: 14px 12px 12px;
+                text-align: center;
+            }
+            .metric-card-value {
+                font-size: 44px;
+                line-height: 1;
+                font-weight: 900;
+                color: #2A1940;
+                margin: 0 0 10px 0;
+            }
+            .metric-card-caption {
+                font-size: 13px;
+                font-weight: 700;
+                color: #5A4E73;
+                margin: 0;
+            }
+            .metric-card-rf {
+                border: 2px solid #79C798;
+                background: #E5F5EA;
+                box-shadow: 0 6px 18px rgba(46, 139, 87, 0.18);
+            }
+            .metric-card-rf .metric-card-head {
+                color: #F2FFF7;
+                background: #1F7A46;
+            }
+            .metric-card-rf .metric-card-value {
+                color: #185B34;
+            }
+            .metric-badge {
+                display: inline-block;
+                margin-top: 8px;
+                padding: 3px 10px;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 800;
+                color: #0F512B;
+                background: #BFE8CB;
+                border: 1px solid #7DC595;
+            }
         </style>
         <div class='analysis-hero'>
             <p class='analysis-title'>Model Analysis and Recommendation</p>
@@ -259,28 +453,65 @@ def render_model_analysis_page() -> None:
         st.session_state["auth_page"] = "main"
         st.rerun()
 
+    baseline_accuracy_text = f"{float(baseline_metrics.get('Accuracy', 0.0)):.1%}"
+    rf_accuracy_text = f"{float(rf_summary.get('output', {}).get('accuracy', 0.0)):.1%}"
+    xgb_accuracy_text = f"{float(xgb_metrics.get('Accuracy', 0.0)):.1%}"
+    kmeans_silhouette_text = f"{float(kmeans_pca2.get('silhouette', 0.0)):.4f}"
+
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
-        st.metric("Baseline Accuracy", f"{float(baseline_metrics.get('Accuracy', 0.0)):.1%}")
-        st.caption("Pruned multinomial logistic regression")
+        st.markdown(
+            f"""
+            <div class='metric-card'>
+                <div class='metric-card-head'>Baseline Accuracy</div>
+                <div class='metric-card-body'>
+                    <p class='metric-card-value'>{baseline_accuracy_text}</p>
+                    <p class='metric-card-caption'>Pruned multinomial logistic regression</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with col_b:
-        st.metric("Random Forest Accuracy", f"{float(rf_summary.get('output', {}).get('accuracy', 0.0)):.1%}")
-        st.caption("SMOTE + 300-tree random forest")
+        st.markdown(
+            f"""
+            <div class='metric-card metric-card-rf'>
+                <div class='metric-card-head'>Random Forest Accuracy</div>
+                <div class='metric-card-body'>
+                    <p class='metric-card-value'>{rf_accuracy_text}</p>
+                    <p class='metric-card-caption'>SMOTE + 300-tree random forest</p>
+                    <span class='metric-badge'>Ideal Model</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with col_c:
-        st.metric("XGBoost Accuracy", f"{float(xgb_metrics.get('Accuracy', 0.0)):.1%}")
-        st.caption("Tuned XGBoost (model_2)")
+        st.markdown(
+            f"""
+            <div class='metric-card'>
+                <div class='metric-card-head'>XGBoost Accuracy</div>
+                <div class='metric-card-body'>
+                    <p class='metric-card-value'>{xgb_accuracy_text}</p>
+                    <p class='metric-card-caption'>Tuned XGBoost (model_tuned)</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with col_d:
-        st.metric("Best KMeans NMI", f"{float(kmeans_best.get('normalized_mutual_info', kmeans_baseline.get('alignment_to_burnout_labels', {}).get('normalized_mutual_info', 0.0))):.4f}")
-        st.caption("Unsupervised label alignment")
-
-    st.markdown(
-        """
-        <div class='analysis-note analysis-note-good'><strong>Strong signal:</strong> Random Forest consistently shows the best supervised predictive performance.</div>
-        <div class='analysis-note analysis-note-warn'><strong>Caution:</strong> Baseline remains important for explainability, but performance is limited.</div>
-        <div class='analysis-note analysis-note-risk'><strong>Constraint:</strong> KMeans alignment to true burnout classes is weak, so it should not drive final predictions.</div>
-        """,
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            f"""
+            <div class='metric-card'>
+                <div class='metric-card-head'>KMeans (PCA2) Metrics</div>
+                <div class='metric-card-body'>
+                    <p class='metric-card-value'>{kmeans_silhouette_text}</p>
+                    <p class='metric-card-caption'>Silhouette score</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.markdown("### How each model behaves")
     insight_cols = st.columns(4)
@@ -334,66 +565,16 @@ def render_model_analysis_page() -> None:
     comparison_df = build_model_comparison_table(analysis_data)
     st.dataframe(comparison_df, use_container_width=True, hide_index=True)
 
-    st.markdown("### Visual summary")
-    chart_cols = st.columns(2)
-
-    family_score_fig = go.Figure()
-    family_score_fig.add_trace(
-        go.Bar(
-            name="Primary score",
-            x=["Baseline", "Random Forest", "XGBoost", "KMeans"],
-            y=[
-                float(baseline_metrics.get("Accuracy", 0.0)),
-                float(rf_summary.get("output", {}).get("accuracy", 0.0)),
-                float(xgb_metrics.get("Accuracy", 0.0)),
-                float(kmeans_best.get("normalized_mutual_info", kmeans_baseline.get("alignment_to_burnout_labels", {}).get("normalized_mutual_info", 0.0))),
-            ],
-            marker_color=["#C39A3A", "#2E8B57", "#246A9A", "#A04857"],
-        )
-    )
-    family_score_fig.update_layout(
-        title="Semantic Score Comparison (Amber=Benchmark, Green=Best, Red=Risk)",
-        yaxis_title="Score",
-        height=360,
-        margin=dict(l=20, r=20, t=50, b=20),
-    )
-
-    with chart_cols[0]:
-        st.plotly_chart(family_score_fig, use_container_width=True)
-
-    kmeans_metric_fig = go.Figure()
-    kmeans_metric_fig.add_trace(
-        go.Bar(
-            name="KMeans metrics (risk-focused)",
-            x=["Silhouette", "NMI", "ARI"],
-            y=[
-                float(kmeans_best.get("silhouette", kmeans_baseline.get("metrics_unsupervised", {}).get("silhouette", 0.0))),
-                float(kmeans_best.get("normalized_mutual_info", kmeans_baseline.get("alignment_to_burnout_labels", {}).get("normalized_mutual_info", 0.0))),
-                float(kmeans_best.get("adjusted_rand_index", kmeans_baseline.get("alignment_to_burnout_labels", {}).get("adjusted_rand_index", 0.0))),
-            ],
-            marker_color=["#C39A3A", "#A04857", "#A04857"],
-        )
-    )
-    kmeans_metric_fig.update_layout(
-        title="KMeans Quality Check (Amber=Partial, Red=Weak Alignment)",
-        yaxis_title="Score",
-        height=360,
-        margin=dict(l=20, r=20, t=50, b=20),
-    )
-
-    with chart_cols[1]:
-        st.plotly_chart(kmeans_metric_fig, use_container_width=True)
-
     st.markdown("### Evaluation details")
     st.caption("Baseline, Random Forest, and XGBoost include confusion-matrix views. KMeans does not produce a standard confusion matrix, so its clustering quality is shown with NMI, ARI, and silhouette.")
     eval_cols = st.columns(3)
     with eval_cols[0]:
-        st.markdown("#### Baseline confusion metrics")
-        st.dataframe(pd.DataFrame([baseline_metrics]), use_container_width=True, hide_index=True)
-        if not baseline_sens_spec.empty:
-            st.dataframe(baseline_sens_spec, use_container_width=True, hide_index=True)
+        st.markdown("<h4 style='text-align:center;'>Baseline confusion metrics</h4>", unsafe_allow_html=True)
+        st.table(style_eval_table(pd.DataFrame([baseline_metrics]), hide_index=True))
+        # if not baseline_sens_spec.empty:
+        #     st.dataframe(baseline_sens_spec, use_container_width=True, hide_index=True)
         if not baseline_cm.empty:
-            st.dataframe(baseline_cm, use_container_width=True, hide_index=False)
+            st.table(style_eval_table(baseline_cm, integer_values=True))
             baseline_heatmap = go.Figure(
                 data=go.Heatmap(
                     z=baseline_cm.iloc[:, 1:].values if baseline_cm.shape[1] > 4 else baseline_cm.values,
@@ -410,7 +591,7 @@ def render_model_analysis_page() -> None:
             )
             st.plotly_chart(baseline_heatmap, use_container_width=True)
     with eval_cols[1]:
-        st.markdown("#### Random Forest confusion metrics")
+        st.markdown("<h4 style='text-align:center;'>Random Forest confusion metrics</h4>", unsafe_allow_html=True)
         rf_metrics_table = pd.DataFrame([{
             "accuracy": float(rf_summary.get("output", {}).get("accuracy", 0.0)),
             "macro_precision": float(rf_eval.get("macro avg", {}).get("precision", 0.0)),
@@ -419,11 +600,13 @@ def render_model_analysis_page() -> None:
             "weighted_f1": float(rf_eval.get("weighted avg", {}).get("f1-score", 0.0)),
             "total_predictions": int(rf_summary.get("output", {}).get("total_predictions", 0)),
         }])
-        st.dataframe(rf_metrics_table, use_container_width=True, hide_index=True)
+        st.table(style_eval_table(rf_metrics_table, hide_index=True))
         rf_cm_data = rf_cm.get("matrix", []) if isinstance(rf_cm, dict) else []
         rf_labels = rf_cm.get("labels", []) if isinstance(rf_cm, dict) else []
         if rf_cm_data:
-            st.dataframe(pd.DataFrame(rf_cm_data, index=rf_labels, columns=rf_labels), use_container_width=True)
+            st.table(style_eval_table(pd.DataFrame(rf_cm_data, index=rf_labels, columns=rf_labels), integer_values=True))
+            # Add spacing so the RF heatmap aligns better with adjacent model charts.
+            st.markdown("<div style='height: 44px;'></div>", unsafe_allow_html=True)
             rf_heatmap = go.Figure(
                 data=go.Heatmap(
                     z=rf_cm_data,
@@ -440,7 +623,7 @@ def render_model_analysis_page() -> None:
             )
             st.plotly_chart(rf_heatmap, use_container_width=True)
     with eval_cols[2]:
-        st.markdown("#### XGBoost confusion metrics")
+        st.markdown("<h4 style='text-align:center;'>XGBoost confusion metrics</h4>", unsafe_allow_html=True)
         xgb_metrics_table = pd.DataFrame([{
             "accuracy": float(xgb_metrics.get("Accuracy", 0.0)),
             "macro_recall": float(xgb_metrics.get("Macro Recall", 0.0)),
@@ -449,10 +632,10 @@ def render_model_analysis_page() -> None:
             "roc_auc_ovr": float(xgb_metrics.get("ROC-AUC OvR", 0.0)),
             "log_loss": float(xgb_metrics.get("Log Loss", 0.0)),
         }])
-        st.dataframe(xgb_metrics_table, use_container_width=True, hide_index=True)
+        st.table(style_eval_table(xgb_metrics_table, hide_index=True))
 
         if not xgb_cm.empty:
-            st.dataframe(xgb_cm, use_container_width=True)
+            st.table(style_eval_table(xgb_cm, integer_values=True))
             xgb_heatmap = go.Figure(
                 data=go.Heatmap(
                     z=xgb_cm.values,
@@ -483,15 +666,6 @@ def render_model_analysis_page() -> None:
         """,
         unsafe_allow_html=True,
     )
-
-    with st.expander("Code review notes"):
-        st.markdown(
-            "- Baseline script: pruned multinomial logistic regression, standard supervised baseline, low accuracy.\n"
-            "- Random forest code: 300 trees, `max_features='log2'`, `min_samples_split=5`, SMOTE on training only.\n"
-            "- XGBoost artifacts: tuned model_2 metrics and confusion matrix loaded from xgboost-model/output for supervised comparison.\n"
-            "- KMeans code: unsupervised clustering; useful for grouping students, but not for predicting burnout labels directly.\n"
-            "- Best model choice: Random Forest for prediction; baseline and XGBoost for supervised benchmarking; KMeans for segmentation."
-        )
 
     st.markdown("</div>", unsafe_allow_html=True)
 
