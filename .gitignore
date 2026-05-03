@@ -9,5 +9,28 @@ Dataset/user_responses.json
 Database/SUPABASE_SETUP_GUIDE.md
 .env
 env
+
+# Model prediction outputs
+*_pca2_kmeans_predictions.csv
+*_predictions.csv
+example_student_predictions.csv
+
+# Presentation slides
+*presentation_slides*.md
+
+# Trained model artifacts and output directories
+Unsupervised/outputs/pca2_kmeans_model/
+Unsupervised/outputs/baseline_kmeans/
+Unsupervised/outputs/kmeans_benchmark/
+baseline/outputs/final_baseline_model/
+
+# Generated figures
+Unsupervised/outputs/baseline_kmeans/figures/
+Unsupervised/outputs/kmeans_benchmark/figures/
+EDA/Edgar/outputs/augmented_deep/figures/
+
+# Temporary and export locations
+/tmp/
+
 random_forest_inference_bundle.joblib
 ml_randomforest/outputs/random_forest_inference_bundle.joblib

@@ -395,6 +395,8 @@ def main() -> None:
         plt.figure(figsize=(7, 5))
         sns.heatmap(ct, annot=True, fmt="d", cmap="Blues")
         plt.title(f"Best KMeans Sweep: Cluster vs Burnout (k={best_k})")
+        plt.xlabel("True Burnout Quartile")
+        plt.ylabel("K-Means Cluster")
         plt.tight_layout()
         plt.savefig(fig_dir / "best_kmeans_cluster_vs_burnout.png", dpi=160)
         plt.close()
