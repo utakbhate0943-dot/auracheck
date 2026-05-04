@@ -685,7 +685,7 @@ def get_question_for_field(field_name: str) -> str:
         "Counseling": "🗣️ Are you in counseling?",
         "Family_History": "👨‍👩‍👧 Any family history of mental health issues?",
         "Chronic_Illness": "🏥 Do you have any chronic illness?",
-        "Financial_Stress": "💰 How's your financial situation?",
+        "Financial_Stress": "💰 Do you experience financial stress?",
         "Extracurricular": "🎨 Are you involved in extracurricular activities?",
         "Semester": "📅 how many semesters have you enrolled in?",
         "Residence_Type": "🏠 Where do you stay?",
@@ -697,21 +697,21 @@ def get_field_options(field_name: str) -> list:
     options = {
         "Age": [],
         "Gender": ["🧑 Male", "👩 Female", "🧑‍🤝‍🧑 Other"],
-        "Course": ["CS", "Business", "Engineering", "Medicine", "Arts", "Science"],
+        "Course": ["Medical", "Business", "Engineering", "Law", "Computer", "Others"],
         "CGPA": [],
-        "Sleep_Quality": ["😴 Poor (1)", "😴 Fair (2)", "😴 Good (3)", "😴 Very Good (4)", "😴 Excellent (5)"],
-        "Physical_Activity": ["🔴 None (1)", "🟠 Minimal (2)", "🟡 Moderate (3)", "🟢 Active (4)", "💚 Very Active (5)"],
-        "Diet_Quality": ["🔴 Poor (1)", "🟠 Fair (2)", "🟡 Good (3)", "🟢 Very Good (4)", "💚 Excellent (5)"],
-        "Social_Support": ["❌ None (1)", "⚠️ Weak (2)", "😐 Moderate (3)", "✅ Good (4)", "💜 Excellent (5)"],
-        "Relationship": ["Single", "In a relationship", "Married", "Complicated", "Prefer not to say"],
-        "Substance_Use": ["None", "Occasionally", "Regularly", "Daily"],
-        "Counseling": ["Yes, actively", "Previously", "Open to it", "No"],
-        "Family_History": ["Yes - Depression", "Yes - Anxiety", "Yes - Other", "No", "Not sure"],
-        "Chronic_Illness": ["Yes", "No", "Under investigation"],
-        "Financial_Stress": ["🔴 Very High (1)", "🟠 High (2)", "🟡 Moderate (3)", "🟢 Low (4)", "💚 None (5)"],
-        "Extracurricular": ["Very involved", "Somewhat involved", "Minimally involved", "Not involved"],
+        "Sleep_Quality": ["Good", "Poor", "Average"],
+        "Physical_Activity": ["Low", "Moderate", "High"],
+        "Diet_Quality": ["Poor", "Average", "Good"],
+        "Social_Support": ["Low", "Moderate", "High"],
+        "Relationship": ["Single", "Married", "In a relationship"],
+        "Substance_Use": ["Never", "Occasionally", "Frequently"],
+        "Counseling": ["Never", "Occasionally", "Frequently"],
+        "Family_History": ["Yes", "No"],
+        "Chronic_Illness": ["Yes", "No"],
+        "Financial_Stress": ["🔴 Very High (5)", "🟠 High (4)", "🟡 Moderate (3)", "🟢 Low (2)", "💚 None (1)"],
+        "Extracurricular": ["Low", "Moderate", "High"],
         "Semester": ["15", "16", "17", "18", "19","20", "21","22","23","24","25","26","27","28","29","30","30+"],
-        "Residence_Type": ["Home", "Hostel", "Apartment", "Dorm", "Other"],
+        "Residence_Type": ["on-campus", "off-campus","With Family"],
     }
     return options.get(field_name, [])
 
@@ -1361,6 +1361,7 @@ def upsert_daily_feedback(user_id: str, input_date: str, recommendation_followed
 
 def get_user_daily_history(user_id: str) -> pd.DataFrame:
     """Fetch a user's day-by-day survey history with optional feedback."""
+    client = None
     try:
         client = get_required_supabase_client()
         daily_response = (
@@ -1414,16 +1415,17 @@ def get_user_daily_history(user_id: str) -> pd.DataFrame:
         return history_df
 
     feedback_df = pd.DataFrame()
-    try:
-        feedback_response = (
-            client.table("daily_feedback")
-            .select("user_id,input_date,recommendation_followed,recommendation_helpful,feedback_rating,app_feedback")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        feedback_df = pd.DataFrame(feedback_response.data or [])
-    except Exception:
-        feedback_df = pd.DataFrame()
+    if client is not None and daily_response is not None:
+        try:
+            feedback_response = (
+                client.table("daily_feedback")
+                .select("user_id,input_date,recommendation_followed,recommendation_helpful,feedback_rating,app_feedback")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            feedback_df = pd.DataFrame(feedback_response.data or [])
+        except Exception:
+            feedback_df = pd.DataFrame()
 
     if not feedback_df.empty:
         history_df = history_df.merge(
@@ -2360,10 +2362,9 @@ def main():
             elif options:
                 for idx, option in enumerate(options):
                     if st.button(option, key=f"btn_{current_field}_{idx}", width="stretch"):
-                        clean_value = option.split("(")[0].strip() if "(" in option else option
-                        clean_value = ''.join(c for c in clean_value if ord(c) < 0x1F600 or ord(c) > 0x1F64F)
-                        clean_value = clean_value.strip()
-                        answers[current_field] = clean_value if clean_value else option
+                        # Store the exact UI option the user clicked (no normalization here).
+                        # Model-side normalization happens in scripts/integrated_model_inference.py.
+                        answers[current_field] = option
 
                         # Save first baseline response permanently for logged-in users.
                         if current_user_id and current_field in STATIC_USER_FIELDS:
