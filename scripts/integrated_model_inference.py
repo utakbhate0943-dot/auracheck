@@ -85,6 +85,7 @@ def normalize_from_app_answers(raw: dict[str, Any]) -> dict[str, Any]:
     course_map = {
         "cs": "Computer Science",
         "computerscience": "Computer Science",
+        "computer": "Computer Science",
         "business": "Business",
         "engineering": "Engineering",
         "medicine": "Medical",
@@ -97,97 +98,101 @@ def normalize_from_app_answers(raw: dict[str, Any]) -> dict[str, Any]:
     gender_map = {"male": "Male", "female": "Female", "other": "Female"}
     sleep_map = {
         "poor": "Poor",
-        "fair": "Average",
         "average": "Average",
         "good": "Good",
         "verygood": "Good",
         "excellent": "Good",
     }
     pa_map = {
-        "none": "Low",
-        "minimal": "Low",
         "low": "Low",
         "moderate": "Moderate",
-        "active": "High",
-        "veryactive": "High",
         "high": "High",
+        "veryactive": "High",
+        "active": "High",
     }
     diet_map = {
         "poor": "Poor",
-        "fair": "Average",
         "average": "Average",
         "good": "Good",
+        "fair": "Average",
         "verygood": "Good",
         "excellent": "Good",
     }
     social_map = {
-        "none": "Low",
-        "weak": "Low",
         "low": "Low",
         "moderate": "Moderate",
+        "high": "High",
         "good": "High",
         "excellent": "High",
-        "high": "High",
+        "none": "Low",
     }
     rel_map = {
         "single": "Single",
-        "inarelationship": "In a Relationship",
         "married": "Married",
+        "inarelation": "In a Relationship",
+        "inarelationship": "In a Relationship",
+        "inrelationship": "In a Relationship",
         "complicated": "Single",
         "prefernottosay": "Single",
     }
     sub_map = {
-        "none": "Never",
         "never": "Never",
+        "no": "Never",
         "occasionally": "Occasionally",
+        "sometimes": "Occasionally",
+        "frequently": "Frequently",
         "regularly": "Frequently",
         "daily": "Frequently",
-        "frequently": "Frequently",
     }
     counseling_map = {
-        "yesactively": "Frequently",
-        "previously": "Occasionally",
-        "opentoit": "Occasionally",
-        "no": "Never",
         "never": "Never",
+        "no": "Never",
         "occasionally": "Occasionally",
+        "open": "Occasionally",
+        "opentoit": "Occasionally",
         "frequently": "Frequently",
     }
     fh_map = {
-        "yesdepression": "Yes",
-        "yesanxiety": "Yes",
-        "yesother": "Yes",
         "yes": "Yes",
         "no": "No",
-        "notsure": "No",
+        "yesdepression": "Yes",
+        "yesother": "Yes",
+        "yesschizophrenia": "Yes",
+        "yesanxiety": "Yes",
     }
-    chronic_map = {"yes": "Yes", "no": "No", "underinvestigation": "No"}
+    chronic_map = {
+        "yes": "Yes",
+        "no": "No",
+        "underinvestigation": "Yes",
+        "unknown": "Yes",
+    }
     extra_map = {
-        "veryinvolved": "High",
+        "low": "Low",
+        "moderate": "Moderate",
+        "high": "High",
         "somewhatinvolved": "Moderate",
         "minimallyinvolved": "Low",
-        "notinvolved": "Low",
-        "high": "High",
-        "moderate": "Moderate",
-        "low": "Low",
     }
     residence_map = {
-        "home": "With Family",
         "withfamily": "With Family",
-        "hostel": "On-Campus",
-        "dorm": "On-Campus",
         "oncampus": "On-Campus",
-        "apartment": "Off-Campus",
         "offcampus": "Off-Campus",
-        "other": "Off-Campus",
+        "dorm": "On-Campus",
+        "hostel": "On-Campus",
+        "apartment": "Off-Campus",
     }
 
     fin_key = _canonical(raw.get("Financial_Stress", ""))
     fin_map = {
-        "veryhigh": 9.0,
-        "high": 7.0,
-        "moderate": 5.0,
-        "low": 3.0,
+        "veryhigh5": 5.0,
+        "veryhigh": 5.0,
+        "high4": 4.0,
+        "high": 4.0,
+        "moderate3": 3.0,
+        "moderate": 3.0,
+        "low2": 2.0,
+        "low": 2.0,
+        "none1": 1.0,
         "none": 1.0,
     }
 
@@ -195,7 +200,7 @@ def normalize_from_app_answers(raw: dict[str, Any]) -> dict[str, Any]:
         "Age": _as_float(raw.get("Age", 21), 21.0),
         "Course": course_map.get(_canonical(raw.get("Course", "Others")), str(raw.get("Course", "Others"))),
         "Gender": gender_map.get(_canonical(raw.get("Gender", "Female")), "Female"),
-        "CGPA": _as_float(raw.get("CGPA", 3.0), 3.0),
+        "CGPA": _as_float(raw.get("CGPA", 3.00), 3.00),
         "Sleep_Quality": sleep_map.get(_canonical(raw.get("Sleep_Quality", "Average")), "Average"),
         "Physical_Activity": pa_map.get(_canonical(raw.get("Physical_Activity", "Moderate")), "Moderate"),
         "Diet_Quality": diet_map.get(_canonical(raw.get("Diet_Quality", "Average")), "Average"),
@@ -211,6 +216,35 @@ def normalize_from_app_answers(raw: dict[str, Any]) -> dict[str, Any]:
         "Residence_Type": residence_map.get(_canonical(raw.get("Residence_Type", "On-Campus")), "On-Campus"),
     }
     return normalized
+
+
+def _coerce_to_known_label(value: Any, known: set[str]) -> str | None:
+    if not known:
+        return None
+
+    text = str(value)
+    if text in known:
+        return text
+
+    lowered = text.strip().lower()
+    if lowered in known:
+        return lowered
+
+    if re.fullmatch(r"-?\d+\.0", text.strip()):
+        as_int = text.strip()[:-2]
+        if as_int in known:
+            return as_int
+
+    if re.fullmatch(r"-?\d+(?:\.\d+)?", text.strip()):
+        try:
+            num = float(text.strip())
+            as_int = str(int(num))
+            if abs(num - int(num)) < 1e-9 and as_int in known:
+                return as_int
+        except Exception:
+            pass
+
+    return None
 
 
 def load_baseline_assets(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -490,9 +524,15 @@ def predict_random_forest(normalized_input: dict[str, Any], bundle: dict[str, An
 
     for col in x_row.columns:
         if col in encoders:
-            value = str(x_row.at[0, col])
-            if value not in encoders[col].classes_:
-                value = str(default_values.get(col, encoders[col].classes_[0] if len(encoders[col].classes_) else "Unknown"))
+            encoder = encoders[col]
+            known = set(getattr(encoder, "classes_", []))
+
+            value = _coerce_to_known_label(x_row.at[0, col], known)
+            if value is None:
+                value = _coerce_to_known_label(default_values.get(col, ""), known)
+            if value is None:
+                value = next(iter(known), "Unknown")
+
             x_row.at[0, col] = value
         else:
             x_row[col] = pd.to_numeric(x_row[col], errors="coerce").fillna(default_values.get(col, 0.0))
