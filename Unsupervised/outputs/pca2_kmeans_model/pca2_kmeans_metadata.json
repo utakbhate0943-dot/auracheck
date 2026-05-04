@@ -1,0 +1,54 @@
+{
+  "model_type": "PCA(2) + KMeans(4)",
+  "features_raw": [
+    "Age",
+    "Course",
+    "Gender",
+    "CGPA",
+    "Sleep_Quality",
+    "Physical_Activity",
+    "Diet_Quality",
+    "Social_Support",
+    "Relationship_Status",
+    "Substance_Use",
+    "Counseling_Service_Use",
+    "Family_History",
+    "Chronic_Illness",
+    "Financial_Stress",
+    "Extracurricular_Involvement",
+    "Semester_Credit_Load",
+    "Residence_Type"
+  ],
+  "numeric_features": [
+    "Age",
+    "CGPA",
+    "Financial_Stress",
+    "Semester_Credit_Load"
+  ],
+  "categorical_features": [
+    "Course",
+    "Gender",
+    "Sleep_Quality",
+    "Physical_Activity",
+    "Diet_Quality",
+    "Social_Support",
+    "Relationship_Status",
+    "Substance_Use",
+    "Counseling_Service_Use",
+    "Family_History",
+    "Chronic_Illness",
+    "Extracurricular_Involvement",
+    "Residence_Type"
+  ],
+  "n_features_processed": 44,
+  "n_pca_components": 2,
+  "pca_explained_variance_ratio": 0.18646118107691895,
+  "n_clusters": 4,
+  "cluster_labels": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "random_state": 42
+}
