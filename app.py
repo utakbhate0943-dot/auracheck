@@ -87,67 +87,20 @@ def load_json_file(path: str, default: Optional[dict] = None) -> dict:
 
 def load_kmeans_pca2_metrics() -> dict:
     """Load PCA2 KMeans artifacts and compute alignment metrics for comparison."""
-    model_dir = Path(KMEANS_PCA2_MODEL_DIR)
-    preprocessor_path = model_dir / "pca2_kmeans_preprocessor.joblib"
-    pca_path = model_dir / "pca2_kmeans_pca.joblib"
-    model_path = model_dir / "pca2_kmeans_model.joblib"
-    metadata_path = model_dir / "pca2_kmeans_metadata.json"
-
-    required_paths = [preprocessor_path, pca_path, model_path, metadata_path, Path(DATASET_FINAL_PATH)]
-    if any(not p.exists() for p in required_paths):
+    # Always load metrics from pca2_kmeans_metrics_preview.json
+    metrics_path = os.path.join(KMEANS_PCA2_MODEL_DIR, "pca2_kmeans_metrics_preview.json")
+    if not os.path.exists(metrics_path):
         return {}
-
     try:
-        preprocessor = joblib.load(preprocessor_path)
-        pca = joblib.load(pca_path)
-        kmeans = joblib.load(model_path)
-        with metadata_path.open("r", encoding="utf-8") as f:
-            metadata = json.load(f)
-
-        df = pd.read_csv(DATASET_FINAL_PATH)
-        feature_cols = metadata.get("features_raw", [])
-        if not feature_cols or any(c not in df.columns for c in feature_cols):
-            return {}
-        if "burnout_raw_score" not in df.columns:
-            return {}
-
-        X = df[feature_cols].copy()
-        num_cols = [c for c in metadata.get("numeric_features", []) if c in X.columns]
-        cat_cols = [c for c in metadata.get("categorical_features", []) if c in X.columns]
-
-        for c in num_cols:
-            if X[c].isnull().any():
-                X[c] = X[c].fillna(X[c].median())
-        for c in cat_cols:
-            if X[c].isnull().any():
-                X[c] = X[c].fillna("Unknown")
-
-        X_proc = preprocessor.transform(X)
-        X_pca = pca.transform(X_proc)
-        clusters = np.asarray(kmeans.predict(X_pca), dtype=int)
-
-        y_true = pd.qcut(
-            df["burnout_raw_score"].astype(float),
-            q=4,
-            labels=[0, 1, 2, 3],
-            duplicates="drop",
-        ).astype(int).to_numpy()
-
-        mapping_df = pd.DataFrame({"cluster": clusters, "burnout_q": y_true})
-        cluster_to_class = mapping_df.groupby("cluster")["burnout_q"].agg(lambda s: int(s.value_counts().idxmax())).to_dict()
-        mapped_classes = np.asarray([cluster_to_class.get(int(c), 1) for c in clusters], dtype=int)
-
-        silhouette = 0.0
-        if len(np.unique(clusters)) > 1 and len(clusters) > len(np.unique(clusters)):
-            silhouette = float(silhouette_score(X_pca, clusters))
-
+        with open(metrics_path, "r", encoding="utf-8") as f:
+            metrics = json.load(f)
         return {
-            "model_type": metadata.get("model_type", "PCA(2) + KMeans(4)"),
-            "normalized_mutual_info": float(normalized_mutual_info_score(y_true, mapped_classes)),
-            "adjusted_rand_index": float(adjusted_rand_score(y_true, mapped_classes)),
-            "silhouette": silhouette,
-            "n_clusters": int(metadata.get("n_clusters", len(np.unique(clusters)))),
-            "source": "predict_pca2_kmeans.py artifacts",
+            "model_type": "PCA(2) + KMeans(4)",
+            "normalized_mutual_info": float(metrics.get("normalized_mutual_info", 0.0)),
+            "adjusted_rand_index": float(metrics.get("adjusted_rand_index", 0.0)),
+            "silhouette": float(metrics.get("silhouette", 0.0)),
+            "n_clusters": 4,
+            "source": "pca2_kmeans_metrics_preview.json",
         }
     except Exception:
         return {}
