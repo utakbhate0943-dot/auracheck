@@ -70,41 +70,6 @@ This repository includes four main workstreams:
 - **Supabase:** Handles authentication, user management, password reset, and persistent storage of user responses and profiles.
 - **Random Forest Model:** Receives normalized user input, predicts burnout class, and returns results for display and storage.
 
----
-
-## Presentation Slides (Markdown)
-
-### Slide 1: Overall App Flow
-
-- User accesses AuraCheck via web UI.
-- Signs up/logs in (Supabase authentication).
-- Completes daily wellbeing questionnaire.
-- Receives burnout risk prediction.
-- Results and history are saved and visualized.
-
-### Slide 2: Supabase Integration
-
-- User credentials securely stored (hash + salt).
-- Daily responses and profile data saved in Supabase tables.
-- Password reset via Supabase email.
-- Syncs local data to Supabase when online.
-- Enables user history and progress tracking.
-
-### Slide 3: ML Integration (Random Forest)
-
-- User answers are normalized and passed to a trained Random Forest model.
-- Model predicts burnout class (low/mid/high).
-- Model artifacts and inference logic in `ml_randomforest/` and `scripts/integrated_model_inference.py`.
-- Results shown instantly and saved for history.
-
-### Slide 4: Future Scope & Details
-
-- Expand ML models (e.g., deep learning, ensemble).
-- Add more wellbeing metrics and recommendations.
-- Enhance visualizations and user feedback.
-- Integrate with more data sources (wearables, etc.).
-- Improve personalization and notifications.
-
 ## Repository Highlights
 
 - app.py: main application flow, auth, questionnaire, charting, and persistence.
@@ -131,28 +96,12 @@ streamlit run app.py
 
 Create a local .env file at repository root.
 
-Required for app startup:
-
-- None for local-only mode.
-
-Optional:
-
-- OPENAI_API_KEY
-- OPENAI_MODEL (default: gpt-4.1-mini)
-- SUPABASE_URL
-- SUPABASE_ANON_KEY
-- SUPABASE_SERVICE_ROLE_KEY
-- ADMIN_EMAIL
-
 Security notes:
 
 - Do not commit .env.
 - Do not share keys or service-role secrets in docs, screenshots, or logs.
 
 ## Database Modes
-
-- Local mode (default): uses SQLite only.
-- Hybrid mode: SQLite plus optional Supabase mirror sync.
 
 For Supabase schema setup, see Database/SUPABASE_SETUP_GUIDE.md and SQL files in Database/.
 
