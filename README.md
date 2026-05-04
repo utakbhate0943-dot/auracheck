@@ -20,13 +20,90 @@ This repository includes four main workstreams:
 - Baseline model training and reproducible output artifacts.
 - EDA pipeline producing summary tables, diagnostics, and figures.
 
-## High-Level Architecture
 
-- Frontend and app logic: Streamlit in app.py.
-- Local persistence: SQLite database stored under Database/auracheck.db.
-- Optional remote sync: Supabase client upserts to users, profile, and daily_inputs tables.
-- AI recommendations: OpenAI client is supported when API key is configured.
-- Baseline model artifacts: saved under baseline/outputs/final_baseline_model.
+## System Architecture Diagrams
+
+### End-to-End System Architecture
+![AuraCheck Architecture](Dataset/figures/Auracheck%20Architecture.png)
+
+### Authentication Layer
+![Authentication Layer](Dataset/figures/Auracheck%20Authetication%20Layer.png)
+
+### ML Model Integration
+![ML Model Integration](Dataset/figures/Auracheck%20ML%20Integration.png)
+
+### Supabase Database Tables
+![Supabase Database Tables](Dataset/figures/Auracheck%20Supabase.png)
+
+### Tech Stack Overview
+![Tech Stack](Dataset/figures/Auracheck%20Techstack.png)
+
+## Application Flow
+
+1. **User Input & UI:**
+	- Users interact with a Streamlit UI (`app.py`) to submit wellbeing survey answers.
+
+2. **Authentication & User Management:**
+	- Users sign up/log in via Supabase (with hashed/salted passwords).
+	- Password reset is handled via Supabase email functionality.
+	- User credentials and profiles are stored in Supabase.
+
+3. **Data Storage:**
+	- User responses are saved both locally (as JSON) and in Supabase (`daily_inputs` table).
+	- If Supabase is unavailable, local JSON is used as a fallback.
+
+4. **ML Integration:**
+	- User answers are passed to a trained Random Forest model (see `scripts/integrated_model_inference.py`).
+	- The model predicts burnout class and returns results for display.
+
+5. **Results & History:**
+	- Results are shown to the user immediately.
+	- If logged in, results are saved to their Supabase history.
+	- Users can view their historical progress and trends.
+
+6. **Progress Tracking:**
+	- Users can see their daily history and progress charts.
+	- Data syncs between local and Supabase when possible.
+
+## Supabase & ML Integration
+
+- **Supabase:** Handles authentication, user management, password reset, and persistent storage of user responses and profiles.
+- **Random Forest Model:** Receives normalized user input, predicts burnout class, and returns results for display and storage.
+
+---
+
+## Presentation Slides (Markdown)
+
+### Slide 1: Overall App Flow
+
+- User accesses AuraCheck via web UI.
+- Signs up/logs in (Supabase authentication).
+- Completes daily wellbeing questionnaire.
+- Receives burnout risk prediction.
+- Results and history are saved and visualized.
+
+### Slide 2: Supabase Integration
+
+- User credentials securely stored (hash + salt).
+- Daily responses and profile data saved in Supabase tables.
+- Password reset via Supabase email.
+- Syncs local data to Supabase when online.
+- Enables user history and progress tracking.
+
+### Slide 3: ML Integration (Random Forest)
+
+- User answers are normalized and passed to a trained Random Forest model.
+- Model predicts burnout class (low/mid/high).
+- Model artifacts and inference logic in `ml_randomforest/` and `scripts/integrated_model_inference.py`.
+- Results shown instantly and saved for history.
+
+### Slide 4: Future Scope & Details
+
+- Expand ML models (e.g., deep learning, ensemble).
+- Add more wellbeing metrics and recommendations.
+- Enhance visualizations and user feedback.
+- Integrate with more data sources (wearables, etc.).
+- Improve personalization and notifications.
 
 ## Repository Highlights
 
