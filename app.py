@@ -456,6 +456,7 @@ def render_model_analysis_page() -> None:
     baseline_accuracy_text = f"{float(baseline_metrics.get('Accuracy', 0.0)):.1%}"
     rf_accuracy_text = f"{float(rf_summary.get('output', {}).get('accuracy', 0.0)):.1%}"
     xgb_accuracy_text = f"{float(xgb_metrics.get('Accuracy', 0.0)):.1%}"
+
     kmeans_silhouette_text = f"{float(kmeans_pca2.get('silhouette', 0.0)):.4f}"
 
     col_a, col_b, col_c, col_d = st.columns(4)
