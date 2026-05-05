@@ -644,7 +644,7 @@ def get_question_for_field(field_name: str) -> str:
         "Chronic_Illness": "🏥 Do you have any chronic illness?",
         "Financial_Stress": "💰 Do you experience financial stress?",
         "Extracurricular": "🎨 Are you involved in extracurricular activities?",
-        "Semester": "📅 how many semesters have you enrolled in?",
+        "Semester": "📅 how many units have you enrolled in?",
         "Residence_Type": "🏠 Where do you stay?",
     }
     return questions.get(field_name, f"Tell me about {field_name}")
@@ -667,7 +667,7 @@ def get_field_options(field_name: str) -> list:
         "Chronic_Illness": ["Yes", "No"],
         "Financial_Stress": ["🔴 Very High (5)", "🟠 High (4)", "🟡 Moderate (3)", "🟢 Low (2)", "💚 None (1)"],
         "Extracurricular": ["Low", "Moderate", "High"],
-        "Semester": ["15", "16", "17", "18", "19","20", "21","22","23","24","25","26","27","28","29","30","30+"],
+        "Semester": ["7","8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19","20", "21","22","23","24","25","26","27","28","29","30","30+"],
         "Residence_Type": ["on-campus", "off-campus","With Family"],
     }
     return options.get(field_name, [])
